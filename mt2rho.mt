@@ -1,3 +1,12 @@
+# mt2rho -- Monte to Rholang compiler
+# https://github.com/rchain/bounties/issues/427
+#
+# tabs:
+# http://monte.readthedocs.io/en/latest/
+# https://github.com/monte-language/typhon/blob/master/mast/fun/mli.mt
+# https://developer.rchain.coop/tutorial
+# https://github.com/rchain/rchain/blob/dev/rholang/examples/linking/packages/IArrayApi.rho
+
 exports (main)
 
 def varFirst :DeepFrozen := [for ch in ('a'..'z' | 'A'..'Z' | '_'..'_' |'\''..'\'' ) ch].asSet()
