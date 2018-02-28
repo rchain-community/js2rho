@@ -15,8 +15,10 @@ def Expr :DeepFrozen := astBuilder.getExprGuard()
 def letter :DeepFrozen := 'a'..'z' | 'A'..'Z'
 def digit :DeepFrozen := '0'..'9'
 def cr := fn c :Char { c..c }
-def varFirst :DeepFrozen := [for ch in (letter | cr('_') | cr('\'') ) ch].asSet()
-def varRest :DeepFrozen := [for ch in (letter | digit | cr('_') | cr('\'') ) ch].asSet()
+def varFirst :DeepFrozen := [
+    for ch in (letter | cr('_') | cr('\'') ) ch].asSet()
+def varRest :DeepFrozen := [
+    for ch in (letter | digit | cr('_') | cr('\'') ) ch].asSet()
 
 
 object RhoVar as DeepFrozen:
@@ -99,36 +101,56 @@ def butLast(specimen: List, ej) as DeepFrozen:
     return [specimen.slice(0, qty - 1), specimen.last()]
 
 
-def translate(expr: Expr, dest: RhoVar, builder: RhoBuilder) as DeepFrozen:
+def exprLoc(expr :Expr) :RhoVar as DeepFrozen:
+    def [_, =="run",
+         [==true, l0, c0, l1, c1], _] := expr.getSpan()._uncall()
+    return `at_l${l0}c${c0}_to_l${l1}c${c1}`
 
-    def doExprs(exs: List, dest):
-        return switch(exs):
-            match []:
-                builder.Nil()
-            match [ex]:
-                translate(ex, dest, builder)
-            match via (butLast) [init, tail]:
-                def pat :RhoVar := `step${init.size()}`
-                def chan :RhoVar := `${pat}Ch`
-                def rhoInit := doExprs(init, chan)
-                def rhoTail := translate(tail, dest, builder)
-                builder.New([chan],
-                            builder.Par(
-                                rhoInit,
-                                builder.Input(pat, chan, rhoTail)))
+
+def makeCompiler(builder: RhoBuilder) as DeepFrozen:
+    return def compile(expr :Expr) :Proc:
+        def doExprs(exs, dest):
+            return switch(exs):
+                match []:
+                    builder.Nil()
+                match [ex]:
+                    builder.Lift(dest, compile(ex))
+                match via (butLast) [init, tail]:
+                    # ISSUE: uniqueness
+                    def pat :RhoVar := `step${init.size()}`
+                    def chan :RhoVar := `${pat}Ch`
+                    def rhoInit := doExprs(init, chan)
+                    def rhoTail := builder.Lift(dest, compile(tail))
+                    builder.New([chan],
+                                builder.Par(
+                                    rhoInit,
+                                    builder.Input(pat, chan, rhoTail)))
         
-    return switch (expr.getNodeName()):
-        match =="LiteralExpr":
-            builder.Lift(dest, builder.Value(expr.getValue()))
-        match =="SeqExpr":
-            doExprs(expr.getExprs(), dest)
-                
-        match _:
-            throw("not implemented: ", expr.getNodeName(), expr)
+        return switch (expr.getNodeName()):
+            match =="LiteralExpr":
+                builder.Value(expr.getValue())
+            match =="SeqExpr":
+                def chan := exprLoc(expr)
+                builder.New([chan], doExprs(expr.getExprs(), chan))
+            match =="MethodCallExpr":
+                def receiver := compile(expr.getReceiver())
+                def args := [for a in (expr.getArgs()) compile(a)]
+                # def namedArgs := [for namedArg in (expr.getNamedArgs())
+                #                   [compile(namedArg.getKey()),
+                #                    compile(namedArg.getValue())]]
+                fn env {
+                    M.call(receiver(env), expr.getVerb(),
+                           [for arg in (args) arg(env)],
+                           [for [k, v] in (namedArgs) k(env) => v(env)])
+                }
+                    
+            match _:
+                throw("not implemented: ", expr.getNodeName(), expr)
 
 
 def monte0 :DeepFrozen := m`"feed"; "water"; "grow"`
-def monte1 :DeepFrozen := m`object origin {
+def monte1 :DeepFrozen := m`1 + 1`
+def monte2 :DeepFrozen := m`object origin {
     method getX() { 0 }
     method getY() { 0 }
 }
@@ -146,9 +168,11 @@ def testRhoVar() as DeepFrozen:
             traceln(oops)
 
 
-def main(_argv) as DeepFrozen:
+def main(_argv) :Int as DeepFrozen:
     testRhoVar()
-    traceln("monte:", monte0)
-    def rho := rhoBuilder.New(["return"],
-                              translate(monte0.expand(), "return", rhoBuilder))
-    traceln("rholang", rho)
+    def compile := makeCompiler(rhoBuilder)
+    for expr in ([monte0, monte1, monte2]):
+        traceln("monte:", expr)
+        def rho := compile(expr.expand())
+        traceln("rholang", rho)
+    return 0
