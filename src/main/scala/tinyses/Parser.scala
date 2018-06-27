@@ -6,8 +6,12 @@ package com.madmode.tinyses
 
 import scala.util.parsing.combinator._
 
+sealed trait Pattern
+
 sealed trait Expression
 
+//type Body = List[Either[Statement, Declaration]]
+case class Block(body: Expression)
 sealed trait DataLiteral extends Expression
 sealed trait BooleanLiteral extends DataLiteral
 case object Null extends DataLiteral
@@ -16,13 +20,13 @@ case object False extends BooleanLiteral
 case class Number(value: Double) extends DataLiteral
 case class StrLit(value: String) extends DataLiteral
 
-case class Def(id: String) extends Expression
+case class Def(id: String) extends Pattern
 case class Use(id: String) extends Expression
 
 case class ArrayExpr(items: Expression*) extends Expression
 case class ObjectExpr(properties: Property*) extends Expression
 case class Spread(items: Expression*) extends Expression
-
+case class FunctionExpr(n: Maybe[Def], params: List[Param], block: Block)
 sealed trait Property
 case class Prop(k: PropName, e: Expression) extends Property
 case class SpreadObj(e: Expression) extends Property
@@ -30,6 +34,10 @@ case class SpreadObj(e: Expression) extends Property
 sealed trait PropName
 case class PropKey(k: String) extends PropName
 case class PropIx(ix: Double) extends PropName
+
+sealed trait Param
+case class Rest(p: Pattern) extends Param
+case class Optional(v: Def, e: Expression) extends Param
 
 // ISSUE: use JavaTokenParsers instead?
 class JSONTokens extends RegexParsers {
@@ -125,104 +133,101 @@ class TinySESParser extends JSONTokens {
   // GeneratorExpression, or RegularExpressionLiteral.
   def primaryExpr: Parser[Expression] = (
     dataLiteral
-      | "[" ~> repsep(arg, ",")  <~ "]"   ^^ { args => ArrayExpr(args:_*) }
-      | "{" ~> repsep(prop, ",") <~ "}"   ^^ { ps => ObjectExpr(ps:_*) }
+    | "[" ~> repsep(arg, ",")  <~ "]"   ^^ { args => ArrayExpr(args:_*) }
+    | "{" ~> repsep(prop, ",") <~ "}"   ^^ { ps => ObjectExpr(ps:_*) }
+    | functionExpr
+    | quasiExpr
+    | "(" ~> expr <~ ")"
+    | useVar
+    | HOLE               ^^ { ExprHole(_) }
   )
-  /************
-  | functionExpr
-  | quasiExpr
-  | "(" expr ")"                                         ${(_,e,_2) => e}
-  | useVar
-  | HOLE                                                 ${h => ['exprHole',h]};
-  pattern ::=
-  dataLiteral                                          ${n => ['matchData',JSON.parse(n)]}
-  | "[" param ** "," "]"                                 ${(_,ps,_2) => ['matchArray',ps]}
-  | "{" propParam ** "," "}"                             ${(_,ps,_2) => ['matchObj',ps]}
-  | defVar
-  | HOLE                                                 ${h => ['patternHole',h]};
-   ****/
+  def pattern :Parser[Pattern] = (
+    dataLiteral ^^ { MatchData(_) }
+    | "[" ~> repsep(param, ",") <~ "]"      ^^ { MatchArray(_) }
+    | "{" ~> repsep(propParam, ",") <~ "}"  ^^ { MatchObj(_) }
+    | defVar
+    | HOLE                                  ^^ { PatternHole(_) }
+				  )
 
   def arg: Parser[Expression] = (
     "..." ~> expr                                    ^^ { Spread(_) }
       | expr)
 
-  /****
-  param ::=
-  "..." pattern                                        ${(_,p) => ['rest',p]}
-  | defVar "=" expr                                      ${(v,_,e) => ['optional',v,e]}
-  | pattern;
-   * **/
+  def param :Parser[Param] = (
+    "..." ~> pattern                ^^ { Rest(_) }
+      | defVar ~ ("=" ~> expr)        ^^ { case v ~ e => Optional(v, e) }
+      | pattern)
+
   def prop = (
     "..." ~> expr                 ^^ { SpreadObj(_) }
       | (propName <~ ":") ~ expr  ^^ { case k ~ e => Prop(k, e) }
-      // TODO | methodDef
+      | methodDef
       | IDENT                     ^^ { id => Prop(PropKey(id), Use(id)) }
   )
-      /**
-  propParam ::=
-  "..." pattern                                        ${(_,p) => ['restObj',p]}
-  | propName ":" pattern                                 ${(k,_,p) => ['matchProp',k,p]}
-  | IDENT "=" expr                                       ${(id,_,e) => ['optionalProp',id,id,e]}
-  | IDENT                                                ${id => ['matchProp',id,id]};
-        * **/
+
+  def propParam :Parser[PropParam] = (
+    "..." ~> pattern              ^^ { RestObj(_) }
+      | (propName <~ ":") ~ pattern ^^ { case k ~ p => MatchProp(k, p) }
+      | (IDENT <~ "=") ~ expr       ^^ { case id ~ e => OptionalProp(id, id, e) }
+      | IDENT                       ^^ { id => MatchProp(id, id) }
+				      )
   // No computed property name
   def propName: Parser[PropName] =  (
     (identName | STRING)  ^^ { PropKey(_) }
       | NUMBER            ^^ { n: Double => PropIx(n) }
   )
-  /***
-  quasiExpr ::=
-  QUASI_ALL                                            ${q => ['quasi',[q]]}
-  | QUASI_HEAD (expr (QUASI_MID expr)*)? QUASI_TAIL      ${(h,ms,t) => ['quasi',qunpack(h,ms,t)]};
-  later ::= NO_NEWLINE "!";
+
+  def quasiExpr :Parser[Expr] = (
+    QUASI_ALL             ^^ { Quasi(_)}
+      | QUASI_HEAD ~ (expr (QUASI_MID ~ expr)*)? ~ QUASI_TAIL ^^ {
+        case h ~ ms ~ t  => Quasi(qunpack(h, ms, t)) }
+				 )
+  def later: Parser[String] = NO_NEWLINE >~ "!"
+
   // No "new", "super", or MetaProperty. Without "new" we don't need
   // separate MemberExpr and CallExpr productions.
   // Recognize b!foo(x) as distinct from calling b!foo post-parse.
-  postExpr ::= primaryExpr postOp*                       ${binary};
-  postOp ::=
-  "." identName                                        ${(_,id) => ['get',id]}
-  | "[" indexExpr "]"                                    ${(_,e,_2) => ['index',e]}
-  | "(" arg ** "," ")"                                   ${(_,args,_2) => ['call',args]}
-  | quasiExpr                                            ${q => ['tag',q]}
-  | later identName                                      ${(_,id) => ['getLater',id]}
-  | later "[" indexExpr "]"                              ${(_,_2,e,_3) => ['indexLater',e]}
-  | later "(" arg ** "," ")"                             ${(_,_2,args,_3) => ['callLater',args]};
+  def postExpr :Parser[Expr] = primaryExpr ~ postOp* ^^ binary
+  def postOp :Parser[Expr => Expr] = (
+    "." ~> identName                   ^^ { id => e => Get(e, id) }
+      | "[" ~> indexExpr <~ "]"          ^^ { ix => e => Index(e, ix) }
+      | "(" ~> repsep(arg, ",") <~ ")"   ^^ { args => e => Call(e, args) }
+      | quasiExpr                        ^^ { q => e => Tag(e, q) }
+      | later ~> identName               ^^ { id => e => GetLater(e, id) }
+      | later ~> "[" ~> indexExpr <~ "]" ^^ { ix => e => IndexLater(e, ix) }
+      | later ~> "(" ~> repsep(arg, ",") <~ ")"  ^^ { args => e =>
+	CallLater(e, args) }
+  )
   // Omit ("delete" fieldExpr) to avoid mutating properties
-  preExpr ::=
-  preOp preExpr                                        ${(op,e) => [op,e]}
-  | postExpr;
+  def preExpr :Parser[Expr] = (
+    preOp ~ preExpr                      ^^ { case op ~ e => op(e) }
+      | postExpr
+  )
   // No prefix or postfix "++" or "--".
   // No "delete". No bitwise "~".
-  preOp ::= "void" | "typeof" | "+" | "-" | "!";
-  // Restrict index access to number-names, including
-  // floating point, NaN, Infinity, and -Infinity.
-  indexExpr ::= "+" preExpr                              ${(op,e) => [op,e]};
-  // No bitwise operators, "instanceof", "in", "==", or "!=".  Unlike
-  // ES8, none of the relational operators (including equality)
-  // associate. To help readers, mixing relational operators always
-  // requires explicit parens.
-  // TODO: exponentiation "**" operator.
-  multExpr ::= preExpr (("*" | "|" | "%") preExpr)*      ${binary};
-  addExpr ::= multExpr (("+" | "-") multExpr)*           ${binary};
-  relExpr ::= addExpr (relOp addExpr)?                   ${binary};
-  relOp ::= "<" | ">" | "<=" | ">=" | "===" | "!==";
-  andThenExpr ::= relExpr ("&&" relExpr)*                ${binary};
-  orElseExpr ::= andThenExpr ("||" andThenExpr)*         ${binary};
+  def preOp:Parser[Expr => Expr] = (
+    "void" ^^ { Void(_) }
+      | "typeof" ^^ { TypeOf(_) }
+      | "+" ^^ { Positive(_) }
+      | "-" ^^ { Negative(_) }
+      | "!" ^^ { Not(_) }
+  )
+  def addExpr = multExpr ~ (("+" | "-") multExpr)*      ^^ binary
+  def relExpr = addExpr ~ (relOp ~ addExpr)?            ^^ binary
+  def relOp :Parser[String] = "<" | ">" | "<=" | ">=" | "===" | "!=="
+  def andThenExpr = relExpr ("&&" ~ relExpr)*           ^^ binary
+  def orElseExpr :Parser[Expression] = andThenExpr ~ ("||" ~> andThenExpr)*    ^^ binary
   // No trinary ("?:") expression
   // No comma expression, so assignment expression is expr.
   // TODO: Need to be able to write (1,array[i])(args), which
   // either requires that we readmit the comma expression, or
   // that we add a weird special case to the grammar.
-  expr ::=
-  lValue assignOp expr                                 ${(lv,op,rv) => [op,lv,rv]}
-  | arrow
-  | orElseExpr;
+  def expr = (
+    lValue ~ assignOp ~ expr      ^^ { case lv ~ op ~ rv => op(lv, rv) }
+      | arrow
+      | orElseExpr
+  )
 
-   * **/
-
-  def expr = primaryExpr
-
-  /****
   // lValue is only useVar or elementExpr in TinySES.
   // Include only elementExpr from fieldExpr to avoid mutating
   // non-number-named properties.
@@ -231,80 +236,83 @@ class TinySESParser extends JSONTokens {
   // TODO: re-allow assignment to statically named fields,
   // since it is useful during initialization and prevented
   // thereafter by mandatory tamper-proofing.
-  lValue ::= elementExpr | useVar;
-  elementExpr ::=
-  primaryExpr "[" indexExpr "]"                        ${(pe,_,e,_2) => ['index',pe,e]}
-  | primaryExpr later "[" indexExpr "]"                  ${(pe,_,_2,e,_3) => ['indexLater',pe,e]};
-  fieldExpr ::=
-  primaryExpr "." identName                            ${(pe,_,id) => ['get',pe,id]}
-  | primaryExpr later "." identName                      ${(pe,_,_2,id) => ['getLater',pe,id]}
-  | elementExpr;
+  def lValue = elementExpr | useVar
+  def elementExpr = (
+    primaryExpr ~ ("[" ~> indexExpr <~ "]") ^^ { case pe ~ e => Index(pe, e) }
+      | primaryExpr (later ~> "[" ~> indexExpr <~ "]") ^^ { case pe ~ e => IndexLater(pe, e) }
+  )
+  def fieldExpr = (
+    primaryExpr ~ ("." ~> identName)                 ^^ { case pe ~ id => Get(pe, id) }
+      | primaryExpr ~ (later ~> "." ~> identName)    ^^ { case pe ~ id => GetLater(pe, id) }
+      | elementExpr
+  )
   // No bitwise operators
-  assignOp ::= "=" | "*=" | "|=" | "%=" | "+=" | "-=";
+  def assignOp :Parser[String] = "=" | "*=" | "|=" | "%=" | "+=" | "-="
   // The expr form must come after the block form, to make proper use
   // of PEG prioritized choice.
-  arrow ::=
-  params NO_NEWLINE "=>" block                         ${(ps,_,_2,b) => ['arrow',ps,b]}
-  | params NO_NEWLINE "=>" expr                          ${(ps,_,_2,e) => ['lambda',ps,e]};
-  params ::=
-  IDENT                                                ${id => [['def',id]]}
-  | "(" param ** "," ")"                                 ${(_,ps,_2) => ps};
+  def arrow = (
+    params ~ (NO_NEWLINE ~> "=>" ~> block)       ^^ { case ps ~ b => Arrow(ps, b) }
+      | params ~(NO_NEWLINE ~> "=>" expr)        ^^ { case ps ~ e => Lambda(ps, e) }
+  )
+  def params :Parser[List[Pattern]] = (
+    IDENT                                        ^^ { id => List(Def(id)) }
+      | "(" ~> repsep(param, ",") <~ ")"
+  )
   // No "var", empty statement, "with", "do/while", or "for/in". None
   // of the insane variations of "for". Only blocks are accepted for
   // flow-of-control statements.
   // The expr production must go last, so PEG's prioritized choice will
   // interpret {} as a block rather than an expression.
-  statement ::=
-  block
-  | "if" "(" expr ")" block "else" block                 ${(_,_2,c,_3,t,_4,e) => ['if',c,t,e]}
-  | "if" "(" expr ")" block                              ${(_,_2,c,_3,t) => ['if',c,t]}
-  | "for" "(" declaration expr? ";" expr? ")" block      ${(_,_2,d,c,_3,i,_4,b) => ['for',d,c,i,b]}
-  | "for" "(" declOp binding "of" expr ")" block         ${(_,_2,d,_3,e,_4,b) => ['forOf',d,e,b]}
-  | "while" "(" expr ")" block                           ${(_,_2,c,_3,b) => ['while',c,b]}
-  | "switch" "(" expr ")" "{" branch* "}"                ${(_,_2,e,_3,_4,bs,_5) => ['switch',e,bs]}
-  | IDENT ":" statement                                  ${(label,_,stat) => ['label',label,stat]}
-  | "try" block catcher finalizer                        ${(_,b,c,f) => ['try',b,c,f]}
-  | "try" block finalizer                                ${(_,b,f) => ['try',b,f]}
-  | "try" block catcher                                  ${(_,b,c) => ['try',b,c]}
-  | terminator
-  | "debugger" ";"                                       ${(_,_2) => ['debugger']}
-  | expr ";"                                             ${(e,_) => e};
+  def statement :Parser[Statement] = (
+    block
+      | "if" ~> ("(" ~> expr <~ ")") ~ block ~ ("else" ~> block)? ^^ { case c ~ t ~ e => If(c, t, e) }
+      | "for" ~> "(" ~> declaration ~> expr? ~ (";" ~> expr?) ~ ")" ~ block    ^^ { case d ~ c ~ i ~ b => For(d, c, i, b) }
+      | "for" ~> "(" ~> declOp ~ binding ~ ("of" ~> expr <~ ")") ~ block       ^^ { case d ~ e ~ b => ForOf(d, e, b) }
+      | "while" ~> ("(" ~> expr <~ ")") ~ block               ^^ { case c ~ b => While(c, b) }
+      | "switch" ~> ("(" ~> expr <~ ")") ~ ("{" ~> (branch*) <~ "}") ^^ { case e ~ bs => Switch(e, bs) }
+      | (IDENT <~ ":") ~ statement                           ^^ { case label ~ stat => Label(label, stat) }
+      | "try" ~> block ~ catcher? ~ finalizer?                 ^^ { case b ~ c ~ f => Try(b, c, f) }
+      | terminator
+      | "debugger" <~ ";"                                    ^^ { Debugger }
+      | expr <~ ";"                                          ^^ { e => e }
+  )
   // Each case branch must end in a terminating statement.
-  terminator ::=
-  "return" NO_NEWLINE expr ";"                         ${(_,_2,e,_3) => ['return',e]}
-  | "return" ";"                                         ${(_,_2) => ['return']}
-  | "break" NO_NEWLINE IDENT ";"                         ${(_,_2,label,_3) => ['break',label]}
-  | "break" ";"                                          ${(_,_2) => ['break']}
-  | "continue" NO_NEWLINE IDENT ";"                      ${(_,_2,label,_3) => ['continue',label]}
-  | "continue" ";"                                       ${(_,_2) => ['continue']}
-  | "throw" expr ";"                                     ${(_,e,_2) => ['throw',e]};
+  def terminator = (
+    "return" ~> ((NO_NEWLINE ~> expr)?) <~ ";"                    ^^ { Return(_) }
+      | "break" ~> ((NO_NEWLINE ~> IDENT)?) <~ ";"                ^^ { Break(_) }
+      | "continue" ~> ((NO_NEWLINE ~> IDENT)?) <~ ";"             ^^ { Continue(_) }
+      | "throw" ~> expr <~ ";"                                  ^^ { Throw(_) }
+  )
   // No "class" declaration.
   // No generator, async, or async iterator function.
-  declaration ::=
-  declOp binding ** "," ";"                            ${(op,decls,_) => [op, decls]}
-  | functionDecl;
-  declOp ::= "const" | "let";
+  def declaration = (
+    declOp ~ repsep(binding, ",") <~ ";"                        ^^ { case op ~ decls => op(decls) }
+      | functionDecl
+  )
+  def declOp = "const" | "let"
   // Initializer is mandatory
-  binding ::= pattern "=" expr                           ${(p,_,e) => ['bind', p, e]};
-  catcher ::= "catch" "(" pattern ")" block              ${(_,_2,p,_3,b) => ['catch',p,b]};
-  finalizer ::= "finally" block                          ${(_,b) => ['finally',b]};
-  branch ::= caseLabel+ "{" body terminator "}"          ${(cs,_,b,t,_2) => ['branch',cs,[...b,t]]};
-  caseLabel ::=
-  "case" expr ":"                                      ${(_,e) => ['case', e]}
-  | "default" ":"                                        ${(_,_2) => ['default']};
-  block ::= "{" body "}"                                 ${(_,b,_2) => ['block', b]};
-  body ::= (statement | declaration)*;
-  functionExpr ::=
-  "function" defVar? "(" params ")" block          ${(_,n,_2,p,_3,b) => ['functionExpr',n,p,b]};
-  functionDecl ::=
-  "function" defVar "(" params ")" block           ${(_,n,_2,p,_3,b) => ['functionDecl',n,p,b]};
-  methodDef
-  propName "(" params ")" block                    ${(n,_,p,_2,b) => ['methodDef',n,p,b]}
-  | identGet propName "(" ")" block                  ${(_,n,_2,_3,b) => ['getter',n,[],b]}
-  | identSet propName "(" param ")" block            ${(_,n,_2,p,_3,b) => ['setter',n,[p],b]};
+  def binding = pattern ("=" ~> expr)                        ^^ { case p ~ e => Bind(p, e) }
+  def catcher = "catch" ~> ("(" ~> pattern <~ ")") ~ block   ^^ { case p ~ b => Catch(p, b) }
+  def finalizer = "finally" ~> block                         ^^ { Finally(_) }
+  def branch = caseLabel+ ~ ("{" ~> body ~ terminator ~ "}") ^^ { case cs ~ b ~ t =>
+    Branch(cs, b ++ List(t)) }
+  def caseLabel = (
+  "case" ~> expr <~ ":"                                  ^^ { Case(_) }
+    | "default" ~ ":"                                    ^^ { Default(_) }
+  )
 
-   **********/
+  def block :Parser[Block] = "{" ~> body <~ "}" ^^ {Block(_)}
+  def body :Parser[Body] = rep(statement | declaration)
+  def functionExpr = "function" ~> defVar? ("(" ~> params <~ ")") ~ block   ^^ {
+    case n ~ p ~ b => FunctionExpr(n, p, b) }
 
+  def functionDecl :Parser[Declaration] = "function" ~> defVar ("(" ~> params <~ ")")  block ^^ {
+    case n ~ p ~ b => FunctionDecl(n, p, b) }
+  def methodDef : Parser[_] = (
+    propName ~ ("(" ~> params <~ ")") ~ block   ^^ { case n ~ p ~ b => MethodDef(n, p, b) }
+      | identGet ~ (propName <~ "(" <~ ")") ~ block ^^ { case n ~ b => Getter(n, List(), b) }
+      | identSet ~ propName ~ ("(" ~> param <~ ")") ~  block ^^ { case n ~ p ~ b => Setter(n, List(p), b) }
+  )
 }
 
 object TestSimpleParser extends TinySESParser {
