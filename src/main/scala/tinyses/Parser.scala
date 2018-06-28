@@ -4,6 +4,7 @@
 
 package tinyses  // ISSUE: package com.madmode.tinyses?
 
+import scala.io.Source
 import scala.util.matching.Regex
 import scala.util.parsing.combinator._
 
@@ -101,7 +102,6 @@ class JSONTokens extends RegexParsers {
   // TODO: val CHAR_RE = r"[^\"\\]|\\"|\\\\|\\/|\\b|\\f|\\n|\\r|\\t|" // TODO: + UCODE_RE
   // TODO: def STRING: Parser[String] = s"\"${CHAR_RE}*\"".r
   def STRING: Parser[String] = "\"[^\"]*\"".r
-  def IDENT: Parser[String] = raw"[a-zA-Z_$$][\w$$]*".r
 }
 
 class TinySESParser extends JSONTokens {
@@ -135,6 +135,7 @@ class TinySESParser extends JSONTokens {
   def QUASI_MID: Parser[String] = "@@TODO"
   def QUASI_TAIL: Parser[String] = "@@TODO"
 
+  def IDENT: Parser[String] = not(KEYWORD) ~> raw"[a-zA-Z_$$][\w$$]*".r
 
   // Omit "async", "arguments", and "eval" from IDENT in TinySES even
   // though ES2017 considers them in IDENT.
@@ -409,10 +410,24 @@ class TinySESParser extends JSONTokens {
 
 object TestSimpleParser extends TinySESParser {
     def main(args: Array[String]) = {
-        parse(primaryExpr, "[1, true, false, {x} ]") match {
-            case Success(matched,_) => println(matched)
-            case Failure(msg,_) => println("FAILURE: " + msg)
-            case Error(msg,_) => println("ERROR: " + msg)
-        }
+      import java.nio.file.Path
+      import java.nio.file.Paths
+
+      val currentRelativePath = Paths.get("")
+      println(currentRelativePath.toAbsolutePath().toString())
+
+      test1("[1, true, false, {x} ]")
+
+      for (srcFileName <- args) {
+        println(srcFileName)
+        val src = Source.fromFile(srcFileName).getLines.mkString
+        test1(src)
+      }
     }
+
+  def test1(src: String) = parse(primaryExpr, src) match {
+    case Success(matched,_) => println(matched)
+    case Failure(msg,_) => println("FAILURE: " + msg)
+    case Error(msg,_) => println("ERROR: " + msg)
+  }
 }
