@@ -15,45 +15,45 @@
 
 "use strict";
 
-var Q = require("q");
-var escrowExchange = require("./escrowExchange");
-var cajaVM = require("./cajaVM");
+const Q = require("q");
+const escrowExchange = require("./escrowExchange");
+const cajaVM = require("./cajaVM");
 
-var def = cajaVM.def;
+const def = cajaVM.def;
 
-var makeAlice = function(myMoneyPurse, myStockPurse, contractHostP) {
-  var escrowSrc = ''+escrowExchange;
-  var myPurse = myMoneyPurse;
+const makeAlice = function(myMoneyPurse, myStockPurse, contractHostP) {
+  const escrowSrc = ''+escrowExchange;
+  const myPurse = myMoneyPurse;
 
-  var check = function(allegedSrc, allegedSide) {
+  const check = function(allegedSrc, allegedSide) {
     // for testing purposes, alice and bob are willing to play
     // any side of any contract, so that the failure we're testing
     // is in the contractHost's checking
   };
 
-  var alice = def({
+  const alice = def({
     payBobWell: function(bobP) {
-      var paymentP = Q(myMoneyPurse).send('makePurse');
-      var ackP = Q(paymentP).send('deposit', 10, myPurse);
+      const paymentP = Q(myMoneyPurse).send('makePurse');
+      const ackP = Q(paymentP).send('deposit', 10, myPurse);
       return ackP.then(
         function(_) { return bobP.send('buy', 'shoe', paymentP); });
     },
     payBobBadly1: function(bobP) {
-      var payment = def({ deposit: function(amount, src) {} });
+      const payment = def({ deposit: function(amount, src) {} });
       return bobP.send('buy', 'shoe', payment);
     },
     payBobBadly2: function(bobP) {
-      var paymentP = Q(myMoneyPurse).send('makePurse');
-      var ackP = Q(paymentP).send('deposit', 5, myPurse);
+      const paymentP = Q(myMoneyPurse).send('makePurse');
+      const ackP = Q(paymentP).send('deposit', 5, myPurse);
       return ackP.then(
         function(_) { return bobP.send('buy', 'shoe', paymentP); });
     },
 
 
     tradeWell: function(bobP) {
-      var tokensP = Q(contractHostP).send('setup', escrowSrc);
-      var aliceTokenP = Q(tokensP).get(0);
-      var bobTokenP   = Q(tokensP).get(1);
+      const tokensP = Q(contractHostP).send('setup', escrowSrc);
+      const aliceTokenP = Q(tokensP).get(0);
+      const bobTokenP   = Q(tokensP).get(1);
              Q(bobP ).send('invite', bobTokenP,   escrowSrc, 1);
       return Q(alice).send('invite', aliceTokenP, escrowSrc, 0);
     },
@@ -61,16 +61,16 @@ var makeAlice = function(myMoneyPurse, myStockPurse, contractHostP) {
     invite: function(tokenP, allegedSrc, allegedSide) {
       check(allegedSrc, allegedSide);
 
-      var cancel;
-      var a = Q.passByCopy({
+      let cancel = undefined;
+      const a = Q.passByCopy({
         moneySrcP: Q(myMoneyPurse).send('makePurse'),
         stockDstP: Q(myStockPurse).send('makePurse'),
         stockNeeded: 7,
         cancellationP: Q.promise(function(r) { cancel = r; })
       });
-      var ackP = Q(a.moneySrcP).send('deposit', 10, myMoneyPurse);
+      const ackP = Q(a.moneySrcP).send('deposit', 10, myMoneyPurse);
 
-      var decisionP = Q(ackP).then(
+      const decisionP = Q(ackP).then(
         function(_) {
           return Q(contractHostP).send(
             'play', tokenP, allegedSrc, allegedSide, a);
@@ -83,5 +83,9 @@ var makeAlice = function(myMoneyPurse, myStockPurse, contractHostP) {
     }
   });
   return alice;
-};
-module.exports = makeAlice;
+}; //
+// TODO: how do exports work in TinySES?
+// module.exports = makeAlice;
+
+// TODO ISSUE: whitespace, comments at EOF
+30;
