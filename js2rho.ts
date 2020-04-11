@@ -287,14 +287,21 @@ function makeCompiler(bld: RhoBuilder) {
     return js2rho;
 }
 
-const bld = rhoBuilder();
-const compiler = makeCompiler(bld);
-const printer = Object.freeze({
-    print: (txt: string) => process.stdout.write(txt)
-})
-
-
-const program = `
+const tests = [
+    {
+        src: `
+    m.set(purse, decr);
+    `,
+    },
+    {
+        src: `
+    const decr = amount => {
+        balance = Nat(balance - amount);
+    };
+    `,
+    },
+    {
+        src: `
 const makeMint = () => {
     const m = WeakMap();
     const makePurse = () => mint(0);
@@ -317,20 +324,25 @@ const makeMint = () => {
     };
     return mint;
 };
-`;
+`,
+    },
+];
 
-const program0 = `
-m.set(purse, decr);
-`;
+export default
+function unittest() {
+    const bld = rhoBuilder();
+    const compiler = makeCompiler(bld);
+    const printer = Object.freeze({
+        print: (txt: string) => process.stdout.write(txt)
+    })
 
-const program1 = `
-const decr = amount => {
-    balance = Nat(balance - amount);
-};
-`;
+    for (const item of tests) {
+        const prog: Program = parseScript(item.src, { loc: true });
 
-const prog: Program = parseScript(program1, {loc: true});
+        console.log("@@program:", prog);
 
-console.log("@@program:", prog);
+        compiler(prog, bld.Var("top"))._printOn(printer);
+    }
+}
 
-compiler(prog, bld.Var("top"))._printOn(printer);
+unittest();
