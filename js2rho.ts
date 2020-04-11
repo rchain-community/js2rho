@@ -179,12 +179,12 @@ function makeCompiler(bld: RhoBuilder) {
 
         const recur = (js: Node) => {
             const kr = fresh(js)
-            return {v: kr, p: js2rho(js, vn(kr))}
+            return { v: kr, p: js2rho(js, vn(kr)) }
         }
         const kont = (proc: Process) => bld.send(k, [proc]);
         const patname = (pat: Node) => {
             if (pat.type != "Identifier") {
-                throw(pat)  // TODO: other param patterns
+                throw (pat)  // TODO: other param patterns
             }
             return pat.name
         }
@@ -199,8 +199,8 @@ function makeCompiler(bld: RhoBuilder) {
             case "Identifier":
                 // Assume each js ident refers to a cell
                 return bld.send(vn(js.name),
-                                [bld.primitive("get"),
-                                 bld.Drop(k)])
+                    [bld.primitive("get"),
+                    bld.Drop(k)])
             case "BinaryExpression":
                 const op = js.operator
                 if (op == "===" || op == "!==" ||
@@ -215,9 +215,9 @@ function makeCompiler(bld: RhoBuilder) {
                 }
                 // We assume order of arguments doesn't matter.
                 const lt = recur(js.left),
-                      rt = recur(js.right)
+                    rt = recur(js.right)
                 return bld.new_([lt.v, rt.v], par([lt.p, rt.p,
-                    bld.send(k, [bld.binop(op, vn(lt.v).deref(), vn(rt.v).deref())])]))
+                bld.send(k, [bld.binop(op, vn(lt.v).deref(), vn(rt.v).deref())])]))
             case "CallExpression":
                 const args = js.arguments.map(recur)
                 let target;
@@ -225,16 +225,16 @@ function makeCompiler(bld: RhoBuilder) {
                 /* special case for obj.prop(...) */
                 if (js.callee.type == "MemberExpression" &&
                     js.callee.property.type == "Identifier") {
-                        target = recur(js.callee.object)
-                        const prop = js.callee.property
-                        verb = [bld.primitive(prop.name)]
+                    target = recur(js.callee.object)
+                    const prop = js.callee.property
+                    verb = [bld.primitive(prop.name)]
                 } else {
                     target = recur(js.callee)
                 }
                 const vs: string[] = [].concat([target.v], args.map(a => a.v));
                 const call = bld.send(vn(target.v), [].concat(verb, args.map(a => vn(a.v).deref()), [k]))
                 return bld.new_(vs,
-                        par([].concat(args.map(a => a.p), [target.p, call])))
+                    par([].concat(args.map(a => a.p), [target.p, call])))
             case "ExpressionStatement":
                 return js2rho(js.expression, k);
             case "VariableDeclaration":
@@ -252,8 +252,8 @@ function makeCompiler(bld: RhoBuilder) {
                                 const params = [].concat(
                                     init.params.length == 0 ?
                                         [ignore] : (
-                                        init.params.map(pat => vn(patname(pat)))),
-                                   [vn(ret)])
+                                            init.params.map(pat => vn(patname(pat)))),
+                                    [vn(ret)])
                                 const contract = bld.contract(lhs, params, js2rho(init.body, vn(ret)))
                                 const done = bld.send(k, [bld.Nil()])
                                 return bld.Par(contract, done)
