@@ -1,7 +1,9 @@
 /// <reference path="node_modules/@types/node/index.d.ts" />
 /// <reference path="node_modules/@types/esprima/index.d.ts" />
-import { parseScript, Program } from "esprima";
+import { parseModule, Program } from "esprima";
 import { Node } from "estree";
+
+import poolSrc from './testSuite';
 
 // console.log(process.argv); TODO: get filename from process.argv
 
@@ -261,7 +263,7 @@ function makeCompiler(bld: RhoBuilder) {
                         }
                     }
                 }
-                console.log("@@not impl:", JSON.stringify(js, null, 2))
+                console.log("@@VariableDeclaration not impl:", JSON.stringify(js, null, 2))
                 return bld.primitive(js.type)
             case "AssignmentExpression":
                 const lhs = patname(js.left)
@@ -272,11 +274,14 @@ function makeCompiler(bld: RhoBuilder) {
                 if (js.body.length == 1) {
                     return js2rho(js.body[0], k)
                 }
-                console.log("@@not impl:", JSON.stringify(js, null, 2))
+                console.log("BlockStatement @@not impl:", JSON.stringify(js, null, 2))
                 return bld.primitive(js.type)
             case "Program":
                 if (js.body.length == 1) {
                     return js2rho(js.body[0], k)
+                } else {
+                    console.log("@@Program not impl length=", js.body.length);
+                    return bld.primitive(js.type);
                 }
             // TODO: thread statements
             default:
@@ -292,6 +297,9 @@ const tests = [
         src: `
     m.set(purse, decr);
     `,
+    },
+    {
+        src: poolSrc,
     },
     {
         src: `
@@ -329,20 +337,22 @@ const makeMint = () => {
 ];
 
 export default
-function unittest() {
+function unittest(out) {
     const bld = rhoBuilder();
     const compiler = makeCompiler(bld);
     const printer = Object.freeze({
-        print: (txt: string) => process.stdout.write(txt)
+        print: (txt: string) => out.write(txt)
     })
 
     for (const item of tests) {
-        const prog: Program = parseScript(item.src, { loc: true });
+        console.log('\n==== JS SOURCE CODE ====\n', item.src);
+        const prog: Program = parseModule(item.src, { loc: true });
 
-        console.log("@@program:", prog);
+        console.log('==== AST ====\n', JSON.stringify(prog, null, 2));
 
+        console.log('==== RHO ====\n');
         compiler(prog, bld.Var("top"))._printOn(printer);
     }
 }
 
-unittest();
+unittest(process.stdout);
