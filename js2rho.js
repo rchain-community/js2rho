@@ -1,68 +1,74 @@
+// @ts-check
 /// <reference path="node_modules/@types/node/index.d.ts" />
 /// <reference path="node_modules/@types/esprima/index.d.ts" />
-import { parseModule, Program } from "esprima";
-import { Node } from "estree";
+import esprima from "esprima";
+const { parseModule, Program } = esprima;
+//import { Node } from "estree";
 
-import poolSrc from './testSuite';
+import poolSrc from './testSuite.js';
 
 // console.log(process.argv); TODO: get filename from process.argv
 
 
-interface Miranda {
-    _printOn(out: Printer)
-}
-interface Printer {
-    print(s: string)
-}
-interface Process extends Miranda {
-    quote(): Name
-}
-interface Name extends Miranda {
-    deref(): Process
-}
-type BinOp = (
-    // Structurally equivalent processes
-    "==" | "!="
-    // Boolean operators
-    | "and" | "or"
-    // Integers, strings, and datetimes
-    | "+"
-    // Integers and strings
-    | "*" | "%"
-    // Integers
-    | "-" | "/"
-    // All ordered types
-    | "<=" | "<" | ">=" | ">"
-    // Bitfields
-    | "bitand" | "bitor"
-)
+/**
+ * @typedef {Object} Miranda
+ * @property {(out: Printer) => void} _printOn
+ * 
+ * @typedef {Object} Printer
+ * @property {(s: string) => void} print
+ * 
+ * @typedef {Miranda} Process
+ * @property {() => Name} quote
+ * 
+ * @typedef {Object} Name
+ * @property {(out: Printer) => void} _printOn
+ * @property {() => Process} deref
+ */ 
 
-type vdecl = string; // TODO: types, iopairs
+/**
+ * @typedef {"==" | "!="| "and" | "or"| "+"| "*" | "%"| "-" | "/"| "<=" | "<" | ">=" | ">"| "bitand" | "bitor"} BinOp
+    // Structurally equivalent processes: "==" | "!="
+    // Boolean operators: "and" | "or"
+    // Integers, strings, and datetimes: "+"
+    // Integers and strings: "*" | "%"
+    // Integers: "-" | "/"
+    // All ordered types: "<=" | "<" | ">=" | ">"
+    // Bitfields: "bitand" | "bitor"
+ *
+ * // TODO: types, iopairs
+ * @typedef {string} vdecl
+ */
+     
 
-interface RhoBuilder {
-    Nil(): Process
-    primitive(v: boolean | number | string): Process
-    send(dest: Name, procs: Array<Process>): Process
-    binop(op: BinOp, lhs: Process, rhs: Process): Process
-    receiving(lhs: Array<Name>, rhs: Name, proc: Process): Process
-    contract(name: Name, args: Array<Name>, body: Process): Process
-    Drop(n: Name): Process
-    Par(p: Process, q: Process): Process
-    Var(id: string): Name
-    Quote(p: Process): Name
-    new_(vlist: Array<vdecl>, body: Process): Process
-}
+/**
+ * @typedef {Object} RhoBuilder is a thingy
+ * @property {() => Process} Nil
+ * @property {(v: boolean | number | string) => Process} primitive
+ * @property {(dest: Name, procs: Array<Process>) => Process} send
+ * @property {(op: BinOp, lhs: Process, rhs: Process) => Process} binop
+ * @property {(lhs: Array<Name>, rhs: Name, proc: Process) => Process} receiving
+ * @property {(name: Name, args: Array<Name>, body: Process) => Process} contract
+ * @property {(n: Name) => Process} Drop
+ * @property {(p: Process, q: Process) => Process} Par
+ * @property {(id: string) => Name} Var
+ * @property {(p: Process) => Name} Quote
+ * @property {(vars: Array<vdecl>, body: Process) => Process} new_
+ */
 
-function rhoBuilder(): RhoBuilder {
+ /**
+  * @returns {RhoBuilder}
+  */
+function rhoBuilder() {
     const Nil = () => Object.freeze({
         _printOn: (out) => out.print("Nil"),
         quote: () => Quote(Nil())
     });
-    const primitive = (v: boolean | number | string) => Object.freeze({
+
+    const primitive = (v) => Object.freeze({
         _printOn: (out) => out.print(JSON.stringify(v)),
         quote: () => Quote(primitive(v))
     });
-    const Quote = (p: Process) => Object.freeze({
+    const Quote = (p) => Object.freeze({
         _printOn: (out) => {
             out.print("@{ ");
             p._printOn(out)
@@ -70,14 +76,14 @@ function rhoBuilder(): RhoBuilder {
         },
         deref: () => p
     });
-    const Drop = (name: Name) => Object.freeze({
+    const Drop = (name) => Object.freeze({
         _printOn: (out) => {
             out.print("*");
             name._printOn(out)
         },
         quote: () => name
     });
-    const printList = (out: Printer, items: Array<Miranda>) => {
+    const printList = (out, items) => {
         let first = true;
         for (let item of items) {
             if (!first) {
@@ -87,7 +93,7 @@ function rhoBuilder(): RhoBuilder {
             first = false
         }
     }
-    const send = (dest: Name, procs: Array<Process>) => Object.freeze({
+    const send = (dest, procs) => Object.freeze({
         _printOn: (out) => {
             dest._printOn(out)
             out.print(`!(`)  // TODO: !!
@@ -96,7 +102,7 @@ function rhoBuilder(): RhoBuilder {
         },
         quote: () => Quote(send(dest, procs))
     });
-    const binop = (op: BinOp, lhs: Process, rhs: Process) => Object.freeze({
+    const binop = (op, lhs, rhs) => Object.freeze({
         _printOn: (out) => {
             lhs._printOn(out)
             out.print(" " + op + " ")
@@ -104,7 +110,7 @@ function rhoBuilder(): RhoBuilder {
         },
         quote: () => Quote(binop(op, lhs, rhs))
     })
-    const receiving = (lhs: Array<Name>, rhs: Name, proc: Process) => Object.freeze({
+    const receiving = (lhs, rhs, proc) => Object.freeze({
         _printOn: (out) => {
             out.print("for(")
             printList(out, lhs)
@@ -116,7 +122,7 @@ function rhoBuilder(): RhoBuilder {
         },
         quote: () => Quote(receiving(lhs, rhs, proc))
     })
-    const contract = (name: Name, args: Array<Name>, body: Process) => Object.freeze({
+    const contract = (name, args, body) => Object.freeze({
         _printOn: (out) => {
             out.print("contract ")
             name._printOn(out)
@@ -128,7 +134,7 @@ function rhoBuilder(): RhoBuilder {
         },
         quote: () => Quote(contract(name, args, body))
     })
-    const Par = (p: Process, q: Process) => Object.freeze({
+    const Par = (p, q) => Object.freeze({
         _printOn: (out) => {
             p._printOn(out);
             out.print(" | ");
@@ -136,11 +142,11 @@ function rhoBuilder(): RhoBuilder {
         },
         quote: () => Quote(Par(p, q))
     });
-    const Var = (v: string) => Object.freeze({
+    const Var = (v) => Object.freeze({
         _printOn: (out) => out.print(v),
         deref: () => Drop(Var(v))
     })
-    const new_ = (vlist: Array<string>, body: Process) => Object.freeze({
+    const new_ = (vlist, body) => Object.freeze({
         _printOn: (out) => {
             out.print("new ")
             out.print(vlist.join(", "))
@@ -163,28 +169,35 @@ function rhoBuilder(): RhoBuilder {
         Quote: Quote,
         Par: Par,
         new_: new_
-    })
+    });
 }
 
-function makeCompiler(bld: RhoBuilder) {
+/**
+ * 
+ * @param {RhoBuilder} bld 
+ */
+function makeCompiler(bld) {
     let tmp_ix = 0;
-    const fresh = (n: Node) => `l${n.loc.start.line}c${n.loc.start.column}_${tmp_ix++}`
+    const fresh = (n) => `l${n.loc.start.line}c${n.loc.start.column}_${tmp_ix++}`
 
-    const vn = (n: string) => bld.Var(n)
+    /** @type {(n: string) => Name} */    
+    const vn = (n) => bld.Var(n)
     const ignore = vn("_")  // TODO: this is a pattern, not a name, no?
 
-    const par = (ps: Process[]) => ps.reduce((acc, next) => bld.Par(acc, next));
+    /** @type {(ps: Process[] ) => Process } */
+    const par = (ps) => ps.reduce((acc, next) => bld.Par(acc, next));
 
-    function js2rho(js: Node, k: Name): Process {
+    /** @type {(js: Node, k: Name) => Process} */
+    function js2rho(js, k) {
         // console.log("DEBUG: node:", JSON.stringify(js));
         console.log("DEBUG: js.type", js.type);
 
-        const recur = (js: Node) => {
+        const recur = (js) => {
             const kr = fresh(js)
             return { v: kr, p: js2rho(js, vn(kr)) }
         }
-        const kont = (proc: Process) => bld.send(k, [proc]);
-        const patname = (pat: Node) => {
+        const kont = (proc) => bld.send(k, [proc]);
+        const patname = (pat) => {
             if (pat.type != "Identifier") {
                 throw (pat)  // TODO: other param patterns
             }
@@ -233,7 +246,7 @@ function makeCompiler(bld: RhoBuilder) {
                 } else {
                     target = recur(js.callee)
                 }
-                const vs: string[] = [].concat([target.v], args.map(a => a.v));
+                const vs = [].concat([target.v], args.map(a => a.v));
                 const call = bld.send(vn(target.v), [].concat(verb, args.map(a => vn(a.v).deref()), [k]))
                 return bld.new_(vs,
                     par([].concat(args.map(a => a.p), [target.p, call])))
@@ -277,13 +290,37 @@ function makeCompiler(bld: RhoBuilder) {
                 console.log("BlockStatement @@not impl:", JSON.stringify(js, null, 2))
                 return bld.primitive(js.type)
             case "Program":
-                if (js.body.length == 1) {
-                    return js2rho(js.body[0], k)
-                } else {
-                    console.log("@@Program not impl length=", js.body.length);
-                    return bld.primitive(js.type);
+                function build(body) {
+                    if (body.length === 0) {
+                        return bld.Nil;
+                    }
+                    if (body[0].type === 'ImportDeclaration') {
+                        const decl = body[0];
+                        const p = build(body.slice(1));
+                        if (decl.source.type !== 'Literal') {
+                            throw new Error(decl.source.type);
+                        }
+                        if (decl.source.value === '@rchain-community/js2rho') {
+                            for (const spec of decl.specifiers) {
+                                if (!['bundlePlus', 'tuple'].includes(spec.local.name)) {
+                                    throw new Error(`unrecognized name ${spec.local.name} from @rchain-community/js2rho`);
+                                }
+                                // TODO: symbol table? "live" bindings?
+                            }
+                            return p;
+                        } else if (typeof decl.source.value === 'string' && decl.source.value.startsWith('rho:')) {
+                            if (decl.specifiers.length !== 1) {
+                                throw new Error(`must import 1 name from ${decl.source.value}`);
+                            }
+                            const spec = decl.specifiers[0];
+                            // TODO: new x(`uuu`)
+                            return bld.new_([spec.local.name], p);  // TODO: optimize new x { new y { ... } } to new x, y { ... }
+                        }
+                    } else {
+                        throw new Error(`TODO: ${body[0].type} in Program: ${JSON.stringify(body[0])}`);
+                    }
                 }
-            // TODO: thread statements
+                return build(js.body);
             default:
                 console.log("@@not impl:", JSON.stringify(js, null, 2))
                 return bld.primitive(js.type)
@@ -294,12 +331,12 @@ function makeCompiler(bld: RhoBuilder) {
 
 const tests = [
     {
+        src: poolSrc,
+    },
+    {
         src: `
     m.set(purse, decr);
     `,
-    },
-    {
-        src: poolSrc,
     },
     {
         src: `
@@ -341,12 +378,12 @@ function unittest(out) {
     const bld = rhoBuilder();
     const compiler = makeCompiler(bld);
     const printer = Object.freeze({
-        print: (txt: string) => out.write(txt)
+        print: (txt) => out.write(txt)
     })
 
     for (const item of tests) {
         console.log('\n==== JS SOURCE CODE ====\n', item.src);
-        const prog: Program = parseModule(item.src, { loc: true });
+        const prog = parseModule(item.src, { loc: true });
 
         console.log('==== AST ====\n', JSON.stringify(prog, null, 2));
 

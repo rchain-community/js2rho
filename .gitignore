@@ -1,4 +1,3 @@
 node_modules/
-js2rho.js
-testSuite.js
+dist/
 *~
