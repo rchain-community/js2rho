@@ -158,17 +158,17 @@ function rhoBuilder() {
     })
 
     return Object.freeze({
-        Nil: Nil,
-        primitive: primitive,
-        send: send,
-        binop: binop,
-        receiving: receiving,
-        contract: contract,
-        Drop: Drop,
-        Var: Var,
-        Quote: Quote,
-        Par: Par,
-        new_: new_
+        Nil,
+        primitive,
+        send,
+        binop,
+        receiving,
+        contract,
+        Drop,
+        Var,
+        Quote,
+        Par,
+        new_,
     });
 }
 
