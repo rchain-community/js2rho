@@ -14,7 +14,7 @@
     "typescript": "^3.8.3"
   },
   "scripts": {
-    "test": "node index.js"
+    "test": "node test/testSuite.js"
   },
   "author": "Dan Connolly",
   "license": "MIT"
