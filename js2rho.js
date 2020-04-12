@@ -13,17 +13,17 @@ import poolSrc from './testSuite.js';
 /**
  * @typedef {Object} Miranda
  * @property {(out: Printer) => void} _printOn
- * 
+ *
  * @typedef {Object} Printer
  * @property {(s: string) => void} print
- * 
+ *
  * @typedef {Miranda} Process
  * @property {() => Name} quote
- * 
+ *
  * @typedef {Object} Name
  * @property {(out: Printer) => void} _printOn
  * @property {() => Process} deref
- */ 
+ */
 
 /**
  * @typedef {"==" | "!="| "and" | "or"| "+"| "*" | "%"| "-" | "/"| "<=" | "<" | ">=" | ">"| "bitand" | "bitor"} BinOp
@@ -36,9 +36,9 @@ import poolSrc from './testSuite.js';
     // Bitfields: "bitand" | "bitor"
  *
  * // TODO: types, iopairs
- * @typedef {string} vdecl
+ * @typedef {string | [string, string]} vdecl
  */
-     
+
 
 /**
  * @typedef {Object} RhoBuilder is a thingy
@@ -55,9 +55,9 @@ import poolSrc from './testSuite.js';
  * @property {(vars: Array<vdecl>, body: Process) => Process} new_
  */
 
- /**
-  * @returns {RhoBuilder}
-  */
+/**
+ * @returns {RhoBuilder}
+ */
 function rhoBuilder() {
     const Nil = () => Object.freeze({
         _printOn: (out) => out.print("Nil"),
@@ -146,11 +146,14 @@ function rhoBuilder() {
         _printOn: (out) => out.print(v),
         deref: () => Drop(Var(v))
     })
+
+    const fmtvdecl = (vd) => typeof vd === 'string' ? vd : `${vd[0]}(\`${vd[1]}\`)`;
+    /** @type {(vlist: vdecl[], body: Process) => Process} */
     const new_ = (vlist, body) => Object.freeze({
         _printOn: (out) => {
-            out.print("new ")
-            out.print(vlist.join(", "))
-            out.print(" in {\n")
+            out.print("\nnew ")
+            out.print(vlist.map(fmtvdecl).join(",\n  "))
+            out.print("\nin {\n")
             body._printOn(out)
             out.print("\n}\n")
         },
@@ -172,22 +175,81 @@ function rhoBuilder() {
     });
 }
 
+const builtins = {
+    '@rchain-community/js2rho': ['bundlePlus', 'tuple', 'console'],
+    '@agoric/eventual-send': ['E'],
+};
+const rhoConsole = ['console', 'rho:io:stdout'];
+
+
 /**
- * 
- * @param {RhoBuilder} bld 
+ *
+ * @param {RhoBuilder} bld
+ * @returns {(js: Program, k: Name) => Process}
  */
 function makeCompiler(bld) {
+    const loc = (n) => `${n.loc.start.line}c${n.loc.start.column}`
     let tmp_ix = 0;
-    const fresh = (n) => `l${n.loc.start.line}c${n.loc.start.column}_${tmp_ix++}`
+    const fresh = (n) => `l${loc(n)}_${tmp_ix++}`
 
-    /** @type {(n: string) => Name} */    
+    /** @type {(n: string) => Name} */
     const vn = (n) => bld.Var(n)
     const ignore = vn("_")  // TODO: this is a pattern, not a name, no?
 
     /** @type {(ps: Process[] ) => Process } */
     const par = (ps) => ps.reduce((acc, next) => bld.Par(acc, next));
 
-    /** @type {(js: Node, k: Name) => Process} */
+    /**
+     *
+     * @param {Node[]} body
+     */
+    function ofProgram(body) {
+        console.log({ Program: body.length });
+        if (body.length === 0) {
+            return bld.Nil();
+        }
+        const defaultExport = body[body.length - 1];
+        if (defaultExport.type !== 'ExportDefaultDeclaration') {
+            //throw new Error(`${loc(defaultExport)}: expected default export; found ${defaultExport.type}`);
+            console.warn(`${loc(defaultExport)}: expected default export; found ${defaultExport.type}`);
+            return bld.primitive(defaultExport.type);
+        }
+
+        /** @type {vdecl[]} */
+        const newNames = body.slice(0, body.length - 1).flatMap(decl => {
+            if (decl.type !== 'ImportDeclaration') {
+                throw new Error(`${loc(decl)}: expected import; found ${decl.type}`);
+            }
+            if (decl.source.type !== 'Literal') {
+                throw new Error(decl.source.type);
+            }
+            const specifier = decl.source.value;
+            if (typeof specifier === 'string' && specifier.startsWith('rho:')) {
+                if (decl.specifiers.length !== 1) {
+                    throw new Error(`must import 1 name from ${specifier}`);
+                }
+                return [[decl.specifiers[0].local.name, specifier]];
+            } else {
+                const candidates = builtins[specifier];
+                if (!candidates) {
+                    throw new Error(`not supported: import ... from ${specifier}`);
+                }
+                const unknowns = decl.specifiers.map(s => s.local.name).filter(n => !candidates.includes(n));
+                if (unknowns.length > 0) {
+                    throw new Error(`unrecognized name(s) ${unknowns} from ${specifier}`);
+                }
+                return [];
+            }
+        });
+        console.log('@@new names', newNames);
+        if (defaultExport.declaration.type !== 'FunctionDeclaration') {
+            throw new Error(`${loc(defaultExport.declaration)}: expected function declartion; got ${defaultExport.declaration.type}`)
+        }
+        return bld.new_(newNames.concat([rhoConsole]),
+            js2rho(defaultExport.declaration.body, vn(fresh(defaultExport))));
+    }
+
+    /** @type {(js: Program, k: Name) => Process} */
     function js2rho(js, k) {
         // console.log("DEBUG: node:", JSON.stringify(js));
         console.log("DEBUG: js.type", js.type);
@@ -287,40 +349,10 @@ function makeCompiler(bld) {
                 if (js.body.length == 1) {
                     return js2rho(js.body[0], k)
                 }
-                console.log("BlockStatement @@not impl:", JSON.stringify(js, null, 2))
+                console.log("BlockStatement @@not impl:", JSON.stringify(js).slice(0, 480))
                 return bld.primitive(js.type)
             case "Program":
-                function build(body) {
-                    if (body.length === 0) {
-                        return bld.Nil;
-                    }
-                    if (body[0].type === 'ImportDeclaration') {
-                        const decl = body[0];
-                        const p = build(body.slice(1));
-                        if (decl.source.type !== 'Literal') {
-                            throw new Error(decl.source.type);
-                        }
-                        if (decl.source.value === '@rchain-community/js2rho') {
-                            for (const spec of decl.specifiers) {
-                                if (!['bundlePlus', 'tuple'].includes(spec.local.name)) {
-                                    throw new Error(`unrecognized name ${spec.local.name} from @rchain-community/js2rho`);
-                                }
-                                // TODO: symbol table? "live" bindings?
-                            }
-                            return p;
-                        } else if (typeof decl.source.value === 'string' && decl.source.value.startsWith('rho:')) {
-                            if (decl.specifiers.length !== 1) {
-                                throw new Error(`must import 1 name from ${decl.source.value}`);
-                            }
-                            const spec = decl.specifiers[0];
-                            // TODO: new x(`uuu`)
-                            return bld.new_([spec.local.name], p);  // TODO: optimize new x { new y { ... } } to new x, y { ... }
-                        }
-                    } else {
-                        throw new Error(`TODO: ${body[0].type} in Program: ${JSON.stringify(body[0])}`);
-                    }
-                }
-                return build(js.body);
+                return ofProgram(js.body);
             default:
                 console.log("@@not impl:", JSON.stringify(js, null, 2))
                 return bld.primitive(js.type)
@@ -374,7 +406,7 @@ const makeMint = () => {
 ];
 
 export default
-function unittest(out) {
+    function unittest(out) {
     const bld = rhoBuilder();
     const compiler = makeCompiler(bld);
     const printer = Object.freeze({
