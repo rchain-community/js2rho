@@ -11,13 +11,23 @@ sketches compiling JavaScript to RHO-calculus.
 written in JavaScript and compiling them to Rholang for interoperability
 with RChain.
 
-## Getting Started
+## Getting Started (current nodejs)
+
+_note: tested with [nodejs](https://nodejs.org/) 13.12.0_
 
 ```bash
 git clone https://github.com/rchain-community/js2rho.git
 cd js2rho
 npm install
 npm test
+```
+
+### Low-bandwidth install (no dev dependencies)
+
+To install ~350K of essential dependencies without ~50M of typescript tooling, use:
+
+```bash
+npm install --only=prod
 ```
 
 ## Background
