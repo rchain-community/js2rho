@@ -11,6 +11,15 @@ sketches compiling JavaScript to RHO-calculus.
 written in JavaScript and compiling them to Rholang for interoperability
 with RChain.
 
+## Getting Started
+
+```bash
+git clone https://github.com/rchain-community/js2rho.git
+cd js2rho
+npm install
+npm test
+```
+
 ## Background
 
 See also [bounty issue 427](https://github.com/rchain/bounties/issues/427).
