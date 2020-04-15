@@ -18,8 +18,10 @@ async function run(examples, outDir) {
         }
         console.log('js input:', info.input.content.length, info.input.content.slice(0, 60));
         const actual = outDir.resolve(name + '.rho');
-        actual.withWriteStream(ws => js2rho(info.input.content, ws));
+        actual.withSyncWriter(ws => js2rho(info.input.content, ws));
+        console.log('\n==== DONE: ', name);
     }
+    console.log('test suite run DONE.');
 }
 
 export default
@@ -49,10 +51,12 @@ async function load(examples) {
 
 function mkWr(fs, fsp, path) {
     return Object.freeze({
-        withWriteStream(thunk) {
-            const ws = fs.createWriteStream(path)
-            const ret = thunk(ws);
-            ws.close()
+        withSyncWriter(thunk) {
+            const buf = [];
+            const writer = { write(data) { buf.push(data); } };
+            let ret;
+            ret = thunk(writer);
+            fs.writeFileSync(path, buf.join(''));
             return ret;
         },
         mkdir(options) {
@@ -83,4 +87,5 @@ function mkRd(fsp, path) {
 
 
 run(mkRd(fs.promises, 'examples'), mkWr(fs, fs.promises, 'test-results'))
+    .then(_ => console.log('== run DONE.'))
     .catch(crash => console.error(crash));
