@@ -42,7 +42,7 @@ async function main() {
             ]);
             console.log({ "new staking pool rev addr": revAddr, "authKey": revVaultAuthKey });
             const { _0: ok, _1: vault } = await E(RevVault).findOrCreate(revAddr);
-            if (!ok) { return; }  // only match true
+            // @@if (!ok) { return; }  // only match true
             console.log({ "vault": vault });
 
             /* TODO: go beyond just testing the vault mechanics... */
