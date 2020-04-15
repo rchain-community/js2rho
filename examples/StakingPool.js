@@ -49,7 +49,7 @@ async function main() {
             const self = harden({
                 redeem(targetAddr, amount, sealedOrder, _return) {
                     console.log({ "redeem target": targetAddr, "amount": amount, "sealedOrder": sealedOrder });
-                    const { _0: ok, _1: order } = await E(unsealer).run(sealedOrder);
+                    const { _0: ok, _1: order } = await E(unsealer)(sealedOrder);
                     console.log({ "ok": ok, "order": order });
                     if (ok && order === { _0: bundlePlus(self), _1: targetAddr, _2: amount, _3: _return }) {
                         const { _0: success, _1: msg } = await E(vault).transfer(targetAddr, amount, revVaultAuthKey);
