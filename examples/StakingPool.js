@@ -63,7 +63,7 @@ async function main() {
             return bundlePlus(self);
         },
     });
-    const uri = await E(regInsert).run(bundlePlus(StakingPool));
+    const uri = await E(regInsert)(bundlePlus(StakingPool));
     console.log({ "StakingPool uri": uri });
     E(deployResult)(uri);
 }
