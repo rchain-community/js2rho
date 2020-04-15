@@ -4,10 +4,11 @@ import assert from 'assert';
 
 import { js2rho } from '../lib/js2rho.js';
 
-async function run(examples, out) {
+async function run(examples, outDir) {
     const tests = await load(examples);
     console.log(Object.keys(tests));
 
+    await outDir.mkdir({ recursive: true });
     for (const entry of Object.entries(tests)) {
         const [name, info] = entry;
         console.log('\n==== TEST CASE: ', name);
@@ -16,7 +17,8 @@ async function run(examples, out) {
             continue;
         }
         console.log('js input:', info.input.content.length, info.input.content.slice(0, 60));
-        js2rho(info.input.content, out);
+        const actual = outDir.resolve(name + '.rho');
+        actual.withWriteStream(ws => js2rho(info.input.content, ws));
     }
 }
 
@@ -45,6 +47,26 @@ async function load(examples) {
     return cases;
 }
 
+function mkWr(fs, fsp, path) {
+    return Object.freeze({
+        withWriteStream(thunk) {
+            const ws = fs.createWriteStream(path)
+            const ret = thunk(ws);
+            ws.close()
+            return ret;
+        },
+        mkdir(options) {
+            return fsp.mkdir(path, options);
+        },
+        resolve(there) {
+            return mkWr(fs, fsp, `${path}/${there}`);
+        },
+        readOnly() {
+            return mkRd(fsp, path);
+        }
+    })
+}
+
 function mkRd(fsp, path) {
     return Object.freeze({
         async readFile() {
@@ -59,4 +81,6 @@ function mkRd(fsp, path) {
     })
 }
 
-run(mkRd(fs.promises, 'examples'), process.stdout);
+
+run(mkRd(fs.promises, 'examples'), mkWr(fs, fs.promises, 'test-results'))
+    .catch(crash => console.error(crash));
