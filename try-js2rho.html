@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>Try js2rho</title>
+</head>
+
+<body>
+    <h1>Try js2rho</h1>
+    <form id="js2rho">
+        <textarea rows="30" cols="50" name="js"></textarea>
+        <textarea rows="30" cols="50" name="rho" readonly="true" float="right"></textarea>
+        <br />
+        <button type="button">translate</button>
+    </form>
+</body>
+<hr />
+<address>
+    <a href="https://www.madmode.com/">Dan Connolly</a>
+</address>
+<script src="https://unpkg.com/esprima@~4.0/dist/esprima.js"></script>
+<script type="module">
+    import { js2rho } from './lib/js2rho.js';
+    console.log('hi');
+
+    const harden = Object.freeze;
+
+    function translate(inputField, outputField) {
+        console.log('click!');
+        const jsCode = inputField.value;
+        const buf = [];
+        const wr = harden({
+            write(txt) {
+                buf.push(txt);
+            },
+        });
+        js2rho(jsCode, wr);
+        outputField.value = buf.join('');
+    }
+
+    const ui = document.querySelector('#js2rho');
+    const [inF, outF] = [ui.querySelector('*[name="js"]'), ui.querySelector('*[name="rho"]')];
+    ui.querySelector('button').addEventListener('click', () => translate(inF, outF));
+</script>
+
+</html>
