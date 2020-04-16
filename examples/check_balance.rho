@@ -1,0 +1,56 @@
+
+new rl(`rho:registry:lookup`),
+console(`rho:io:stdout`)
+in {
+  
+  new AwaitExpression_9c36_0
+  in {
+    rl!("rho:rchain:revVault", *AwaitExpression_9c36_0)
+    |
+    for(@{ (*_, *RevVault) } <- AwaitExpression_9c36_0) {
+      console!("2.check_balance.rho")
+      |
+      
+      match ("%REV_ADDR") {
+        *revAddress => {
+          console!(("Accessing vault at RevAddress", *revAddress))
+          |
+          
+          new AwaitExpression_17c34_1
+          in {
+            RevVault!("findOrCreate", *revAddress, *AwaitExpression_17c34_1)
+            |
+            for(@{ (*ok, *vault) } <- AwaitExpression_17c34_1) {
+              
+              match (*ok) {
+                true => {
+                  console!("Obtained vault, checking balance")
+                  |
+                  
+                  new AwaitExpression_21c28_2
+                  in {
+                    vault!("balance", *AwaitExpression_21c28_2)
+                    |
+                    for(balance <- AwaitExpression_21c28_2) {
+                      console!(("Balance is", *balance))
+                      }
+                    
+                    }
+                  
+                  }
+                
+                }
+              
+              }
+            
+            }
+          
+          }
+        
+        }
+      
+      }
+    
+    }
+  
+  }
