@@ -52,12 +52,18 @@ async function main() {
                             console.log({ "redeem target": targetAddr, "amount": amount, "sealedOrder": sealedOrder });
                             const { _0: ok, _1: order } = await E(unsealer)(sealedOrder);
                             console.log({ "ok": ok, "order": order });
-                            if (ok && order === { _0: bundlePlus(self), _1: targetAddr, _2: amount, _3: _return }) {
-                                const { _0: success, _1: msg } = await E(vault).transfer(targetAddr, amount, revVaultAuthKey);
-                                console.log({ "transfer success": success, "msg": msg });
-                                return tuple(success, success ? null : msg);
-                            } else {
-                                return tuple(false, "sealed order does not match");
+                            switch (ok && order === tuple(bundlePlus(self), targetAddr, amount, _return)) {
+                                case true:
+                                    const { _0: success, _1: msg } = await E(vault).transfer(targetAddr, amount, revVaultAuthKey);
+                                    console.log({ "transfer success": success, "msg": msg });
+                                    switch (success) {
+                                        case true:
+                                            return tuple(true, null);
+                                        case false:
+                                            return tuple(false, msg);
+                                    }
+                                case false:
+                                    return tuple(false, "sealed order does not match");
                             }
                         }
                     });
