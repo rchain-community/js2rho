@@ -1,96 +1,140 @@
 
-// control REV Vault from smart contract
-// https://rchain.atlassian.net/browse/RCHAIN-3260
-// https://github.com/rchain/rchain/blob/dev/casper/src/main/resources/MultiSigRevVault.rho
-
-new deployResult, // (`rho:rchain:deployId`),
-StakingPool,
+new deployResult(`rho:rchain:deployId`),
 RevAddress(`rho:rev:address`),
 regInsert(`rho:registry:insertArbitrary`),
 registryLookup(`rho:registry:lookup`),
-stdout(`rho:io:stdout`),
-RevVaultCh,
-AuthKeyCh,
-ListOpsCh
+console(`rho:io:stdout`)
 in {
-  registryLookup!(`rho:rchain:authKey`, *AuthKeyCh) |
-  // // regLookup!(`rho:lang:listOps`, *ListOpsCh) |
-  registryLookup!(`rho:rchain:revVault`, *RevVaultCh) |
-  for(
-    @(_, AuthKey) <- AuthKeyCh;
-    @(_, *RevVault) <- RevVaultCh
-  ) {
-    new uriCh in {
-      regInsert!(bundle+{*StakingPool}, *uriCh) |
-      for (@uri <- uriCh) {
-        stdout!({"StakingPool uri": uri})
-      }
-    }
+  
+  new CallExpression_32c8_0, CallExpression_33c8_1
+  in {
+    registryLookup!("rho:rchain:authKey", *CallExpression_32c8_0)
     |
-    contract StakingPool(@"create", unsealer /*TODO: many unsealers*/, ret) = {
-      stdout!({"create unsealer": *unsealer}) |
-      new self, unf, revAddrCh, v1Ch, balanceCh, authKeyCh in {
-        RevAddress!("fromUnforgeable", *unf, *revAddrCh) |
-        RevVault!("unforgeableAuthKey", *unf, *authKeyCh) |
-        for (@revVaultAuthKey <- authKeyCh; @revAddr <- revAddrCh) {
-          stdout!({"new staking pool rev addr": revAddr, "authKey": revVaultAuthKey}) |
-          RevVault!("findOrCreate", revAddr, *v1Ch) |
-          for (@(true, *vault) <- v1Ch) {
-            stdout!({"vault": *vault}) |
-            ret!(bundle+{*self}) |
-
-            /* TODO: go beyond just testing the vault mechanics... */
-            contract self(@"redeem", @targetAddr, @amount, @sealedOrder, ret) = {
-              stdout!({"redeem target": targetAddr, "amount": amount, "sealedOrder": sealedOrder}) |
-              new orderCh in {
-                unsealer!(sealedOrder, *orderCh) |
-                for (@(ok, order) <- orderCh) {
-                  stdout!({"ok": ok, "order": order}) |
-                  if (ok and order == (bundle+{*self}, targetAddr, amount, *ret)) {
-                    new txCh in {
-                      vault!("transfer", targetAddr, amount, revVaultAuthKey, *txCh) |
-                      for (@(success, msg) <- txCh) {
-                        stdout!({"transfer success": success, "msg": msg}) |
-                        if (success) {
-                          ret!((true, Nil))
-                        } else {
-                          ret!((false, msg))
+    registryLookup!("rho:rchain:revVault", *CallExpression_33c8_1)
+    |
+    for(@{ (*_a, *AuthKey) } <- CallExpression_32c8_0; @{ (*_r, *RevVault) } <- CallExpression_33c8_1) {
+      
+      new StakingPool
+      in {
+        contract StakingPool(@{ "create" }, unsealer, __return) = {
+          
+          new unf
+          in {
+            
+            new CallExpression_40c16_2, CallExpression_41c16_3
+            in {
+              RevAddress!("fromUnforgeable", *unf, *CallExpression_40c16_2)
+              |
+              RevVault!("unforgeableAuthKey", *unf, *CallExpression_41c16_3)
+              |
+              for(revVaultAuthKey <- CallExpression_40c16_2; revAddr <- CallExpression_41c16_3) {
+                console!({"new staking pool rev addr": *revAddr, "authKey": *revVaultAuthKey})
+                |
+                
+                new AwaitExpression_44c42_4
+                in {
+                  RevVault!("findOrCreate", *revAddr, *AwaitExpression_44c42_4)
+                  |
+                  for(@{ (*ok, *vault) } <- AwaitExpression_44c42_4) {
+                    
+                    match (*ok) {
+                      true => {
+                        console!({"vault": *vault})
+                        |
+                        
+                        new self
+                        in {
+                          contract self(@{ "redeem" }, targetAddr, amount, sealedOrder, __return) = {
+                            console!({"redeem target": *targetAddr, "amount": *amount, "sealedOrder": *sealedOrder})
+                            |
+                            
+                            new AwaitExpression_53c58_5
+                            in {
+                              unsealer!(*sealedOrder, *AwaitExpression_53c58_5)
+                              |
+                              for(@{ (*ok, *order) } <- AwaitExpression_53c58_5) {
+                                console!({"ok": *ok, "order": *order})
+                                |
+                                
+                                match (*ok and *order == (bundle+{*self}, *targetAddr, *amount, *__return)) {
+                                  true => {
+                                    
+                                    new AwaitExpression_57c69_6
+                                    in {
+                                      vault!("transfer", *targetAddr, *amount, *revVaultAuthKey, *AwaitExpression_57c69_6)
+                                      |
+                                      for(@{ (*success, *msg) } <- AwaitExpression_57c69_6) {
+                                        console!({"transfer success": *success, "msg": *msg})
+                                        |
+                                        
+                                        match (*success) {
+                                          true => {
+                                            __return!((true, Nil))
+                                            }
+                                          false => {
+                                            __return!((false, *msg))
+                                            }
+                                          
+                                          }
+                                        
+                                        }
+                                      
+                                      }
+                                    
+                                    }
+                                  false => {
+                                    __return!((false, "sealed order does not match"))
+                                    }
+                                  
+                                  }
+                                
+                                }
+                              
+                              }
+                            
+                            }
+                          
+                          |
+                          __return!(bundle+{*self})
+                          }
+                        
                         }
+                      false => {
+                        __return!(Nil)
+                        }
+                      
                       }
+                    
                     }
-                  } else {
-                    ret!((false, "sealed order does not match"))
+                  
                   }
+                
                 }
+              
               }
+            
             }
-
+          
           }
-        }
-      }
-    }
-    |
-    // test...
-    new spCh, multiSigRevVaultCh, brandPairCh, txCh, sealedOrderCh in {
-      registryLookup!(`rho:rchain:multiSigRevVault`, *multiSigRevVaultCh) |
-      for(@(_, *MultiSigRevVault) <- multiSigRevVaultCh) {
-        MultiSigRevVault!("makeSealerUnsealer", *brandPairCh) |
-        for (@(*sealer, *unsealer) <- brandPairCh) {
-          stdout!({"brandPair": (*sealer, *unsealer)}) |
-          StakingPool!("create", *unsealer, *spCh) |
-          for (sPool <- spCh) {
-            stdout!({"test got staking pool": *sPool}) |
-            // TODO: use match a la let to DRY out "1234", 10
-            sealer!((*sPool, "1111njay6rbbZ6N6anbAeQxZZdetgnyFUz7vcZZ6hnzACZbQx7JNq", 10, *txCh), *sealedOrderCh) |
-            for (@sealedOrder <- sealedOrderCh) {
-              sPool!("redeem", "1111njay6rbbZ6N6anbAeQxZZdetgnyFUz7vcZZ6hnzACZbQx7JNq", 10, sealedOrder, *txCh) |
-              for (@txResult <- txCh) {
-                stdout!({"txResult": txResult})
-              }
+        
+        |
+        
+        new AwaitExpression_76c16_7
+        in {
+          regInsert!(bundle+{*StakingPool}, *AwaitExpression_76c16_7)
+          |
+          for(uri <- AwaitExpression_76c16_7) {
+            console!({"StakingPool uri": *uri})
+            |
+            deployResult!(*uri)
             }
+          
           }
+        
         }
+      
       }
+    
     }
+  
   }
-}
