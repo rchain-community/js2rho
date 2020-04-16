@@ -48,11 +48,11 @@ async function main() {
 
                     /* TODO: go beyond just testing the vault mechanics... */
                     const self = harden({
-                        async redeem(targetAddr, amount, sealedOrder, _return) {
+                        async redeem(targetAddr, amount, sealedOrder, __return) {
                             console.log({ "redeem target": targetAddr, "amount": amount, "sealedOrder": sealedOrder });
                             const { _0: ok, _1: order } = await E(unsealer)(sealedOrder);
                             console.log({ "ok": ok, "order": order });
-                            switch (ok && order === tuple(bundlePlus(self), targetAddr, amount, _return)) {
+                            switch (ok && order === tuple(bundlePlus(self), targetAddr, amount, __return)) {
                                 case true:
                                     const { _0: success, _1: msg } = await E(vault).transfer(targetAddr, amount, revVaultAuthKey);
                                     console.log({ "transfer success": success, "msg": msg });
