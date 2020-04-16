@@ -42,25 +42,29 @@ async function main() {
             ]);
             console.log({ "new staking pool rev addr": revAddr, "authKey": revVaultAuthKey });
             const { _0: ok, _1: vault } = await E(RevVault).findOrCreate(revAddr);
-            // @@if (!ok) { return; }  // only match true
-            console.log({ "vault": vault });
+            switch (ok) {
+                case true:
+                    console.log({ "vault": vault });
 
-            /* TODO: go beyond just testing the vault mechanics... */
-            const self = harden({
-                redeem(targetAddr, amount, sealedOrder, _return) {
-                    console.log({ "redeem target": targetAddr, "amount": amount, "sealedOrder": sealedOrder });
-                    const { _0: ok, _1: order } = await E(unsealer)(sealedOrder);
-                    console.log({ "ok": ok, "order": order });
-                    if (ok && order === { _0: bundlePlus(self), _1: targetAddr, _2: amount, _3: _return }) {
-                        const { _0: success, _1: msg } = await E(vault).transfer(targetAddr, amount, revVaultAuthKey);
-                        console.log({ "transfer success": success, "msg": msg });
-                        return tuple(success, success ? null : message);
-                    } else {
-                        return tuple(false, "sealed order does not match");
-                    }
-                }
-            });
-            return bundlePlus(self);
+                    /* TODO: go beyond just testing the vault mechanics... */
+                    const self = harden({
+                        redeem(targetAddr, amount, sealedOrder, _return) {
+                            console.log({ "redeem target": targetAddr, "amount": amount, "sealedOrder": sealedOrder });
+                            const { _0: ok, _1: order } = await E(unsealer)(sealedOrder);
+                            console.log({ "ok": ok, "order": order });
+                            if (ok && order === { _0: bundlePlus(self), _1: targetAddr, _2: amount, _3: _return }) {
+                                const { _0: success, _1: msg } = await E(vault).transfer(targetAddr, amount, revVaultAuthKey);
+                                console.log({ "transfer success": success, "msg": msg });
+                                return tuple(success, success ? null : msg);
+                            } else {
+                                return tuple(false, "sealed order does not match");
+                            }
+                        }
+                    });
+                    return bundlePlus(self);
+                case false:
+                    return null;
+            }
         },
     });
     const uri = await E(regInsert)(bundlePlus(StakingPool));
