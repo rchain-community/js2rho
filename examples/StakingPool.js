@@ -34,7 +34,7 @@ async function main() {
     ]);
 
     const StakingPool = harden({
-        create(unsealer) {
+        async create(unsealer) {
             const unf = {};
             const [revVaultAuthKey, revAddr] = await Promise.all([
                 E(RevAddress).fromUnforgeable(unf),
@@ -48,7 +48,7 @@ async function main() {
 
                     /* TODO: go beyond just testing the vault mechanics... */
                     const self = harden({
-                        redeem(targetAddr, amount, sealedOrder, _return) {
+                        async redeem(targetAddr, amount, sealedOrder, _return) {
                             console.log({ "redeem target": targetAddr, "amount": amount, "sealedOrder": sealedOrder });
                             const { _0: ok, _1: order } = await E(unsealer)(sealedOrder);
                             console.log({ "ok": ok, "order": order });
