@@ -2,6 +2,7 @@
 import * as fs from 'fs';
 import assert from 'assert';
 
+import './esprimaGlobal.js';
 import { js2rho } from '../lib/js2rho.js';
 
 async function run(examples, outDir) {
