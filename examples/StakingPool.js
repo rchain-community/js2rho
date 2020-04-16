@@ -27,7 +27,7 @@ const console = harden({
 
 export default
 async function main() {
-    const [AuthKey, RevVault] = await Promise.all([
+    const [{_0: _a, _1: AuthKey}, {_0: _r, _1: RevVault}] = await Promise.all([
         // TODO: uri('rho:...') along with tuple
         E(registryLookup)('rho:rchain:authKey'),
         E(registryLookup)('rho:rchain:revVault'),
