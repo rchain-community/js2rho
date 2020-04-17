@@ -11,5 +11,6 @@ lazy val root = (project in file(".")).
     )),
     name := "tinyses2rho",
     libraryDependencies += scalaTest % Test,
+    libraryDependencies += "de.srtobi" %% "escalima" % "0.3",
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.1"
   )
