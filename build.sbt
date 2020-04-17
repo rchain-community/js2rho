@@ -4,7 +4,9 @@ lazy val root = (project in file(".")).
   settings(
     inThisBuild(List(
       organization := "com.madmode",
-      scalaVersion := "2.12.6",
+      // metals didn't like 2.12.6
+      // rchain/rchain uses 2.12.8
+      scalaVersion := "2.12.8",
       version      := "0.1.0-SNAPSHOT"
     )),
     name := "tinyses2rho",
