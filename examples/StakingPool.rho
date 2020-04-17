@@ -1,0 +1,140 @@
+
+new deployResult(`rho:rchain:deployId`),
+RevAddress(`rho:rev:address`),
+regInsert(`rho:registry:insertArbitrary`),
+registryLookup(`rho:registry:lookup`),
+console(`rho:io:stdout`)
+in {
+  
+  new CallExpression_32c8_0, CallExpression_33c8_1
+  in {
+    registryLookup!("rho:rchain:authKey", *CallExpression_32c8_0)
+    |
+    registryLookup!("rho:rchain:revVault", *CallExpression_33c8_1)
+    |
+    for(@{ (*_a, *AuthKey) } <- CallExpression_32c8_0; @{ (*_r, *RevVault) } <- CallExpression_33c8_1) {
+      
+      new StakingPool
+      in {
+        contract StakingPool(@{ "create" }, unsealer, __return) = {
+          
+          new unf
+          in {
+            
+            new CallExpression_40c16_2, CallExpression_41c16_3
+            in {
+              RevAddress!("fromUnforgeable", *unf, *CallExpression_40c16_2)
+              |
+              RevVault!("unforgeableAuthKey", *unf, *CallExpression_41c16_3)
+              |
+              for(revVaultAuthKey <- CallExpression_40c16_2; revAddr <- CallExpression_41c16_3) {
+                console!({"new staking pool rev addr": *revAddr, "authKey": *revVaultAuthKey})
+                |
+                
+                new AwaitExpression_44c42_4
+                in {
+                  RevVault!("findOrCreate", *revAddr, *AwaitExpression_44c42_4)
+                  |
+                  for(@{ (*ok, *vault) } <- AwaitExpression_44c42_4) {
+                    
+                    match (*ok) {
+                      true => {
+                        console!({"vault": *vault})
+                        |
+                        
+                        new self
+                        in {
+                          contract self(@{ "redeem" }, targetAddr, amount, sealedOrder, __return) = {
+                            console!({"redeem target": *targetAddr, "amount": *amount, "sealedOrder": *sealedOrder})
+                            |
+                            
+                            new AwaitExpression_53c58_5
+                            in {
+                              unsealer!(*sealedOrder, *AwaitExpression_53c58_5)
+                              |
+                              for(@{ (*ok, *order) } <- AwaitExpression_53c58_5) {
+                                console!({"ok": *ok, "order": *order})
+                                |
+                                
+                                match (*ok and *order == (bundle+{*self}, *targetAddr, *amount, *__return)) {
+                                  true => {
+                                    
+                                    new AwaitExpression_57c69_6
+                                    in {
+                                      vault!("transfer", *targetAddr, *amount, *revVaultAuthKey, *AwaitExpression_57c69_6)
+                                      |
+                                      for(@{ (*success, *msg) } <- AwaitExpression_57c69_6) {
+                                        console!({"transfer success": *success, "msg": *msg})
+                                        |
+                                        
+                                        match (*success) {
+                                          true => {
+                                            __return!((true, Nil))
+                                            }
+                                          false => {
+                                            __return!((false, *msg))
+                                            }
+                                          
+                                          }
+                                        
+                                        }
+                                      
+                                      }
+                                    
+                                    }
+                                  false => {
+                                    __return!((false, "sealed order does not match"))
+                                    }
+                                  
+                                  }
+                                
+                                }
+                              
+                              }
+                            
+                            }
+                          
+                          |
+                          __return!(bundle+{*self})
+                          }
+                        
+                        }
+                      false => {
+                        __return!(Nil)
+                        }
+                      
+                      }
+                    
+                    }
+                  
+                  }
+                
+                }
+              
+              }
+            
+            }
+          
+          }
+        
+        |
+        
+        new AwaitExpression_76c16_7
+        in {
+          regInsert!(bundle+{*StakingPool}, *AwaitExpression_76c16_7)
+          |
+          for(uri <- AwaitExpression_76c16_7) {
+            console!({"StakingPool uri": *uri})
+            |
+            deployResult!(*uri)
+            }
+          
+          }
+        
+        }
+      
+      }
+    
+    }
+  
+  }

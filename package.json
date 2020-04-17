@@ -1,0 +1,21 @@
+{
+  "name": "js2rho",
+  "version": "0.1.0",
+  "description": "JavaScript to Rholang translator",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "esprima": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/esprima": "^4.0.1",
+    "@types/estree": "0.0.38",
+    "@types/node": "^13.11.1",
+    "typescript": "^3.8.3"
+  },
+  "scripts": {
+    "test": "node test/testSuite.js"
+  },
+  "author": "Dan Connolly",
+  "license": "MIT"
+}

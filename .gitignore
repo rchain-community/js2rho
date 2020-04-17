@@ -3,6 +3,7 @@
 
 # node.js
 **/node_modules/*
+dist/*
 
 # scala
 **/target/*
