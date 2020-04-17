@@ -1,0 +1,5 @@
+
+new console(`rho:io:stdout`)
+in {
+  console!("Hello, world!")
+  }
