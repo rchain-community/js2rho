@@ -22,7 +22,17 @@ class JSONTokens extends RegexParsers {
   def STRING: Parser[String] = ("\"[^\"]*\"".r | "'[^']*'".r)
 }
 
-class JessieParser extends JSONTokens {
+class JSONParser extends JSONTokens {
+  def dataLiteral: Parser[DataLiteral] =  positioned(
+    "null"        ^^ { _ => Null }
+      | "false"   ^^ { _ => False }
+      | "true"    ^^ { _ => True }
+      | NUMBER    ^^ Number
+      | STRING    ^^ StrLit
+  )
+}
+
+class JustinParser extends JSONParser {
   def binary[R](p: Expression ~ List[Expression => Expression]): Expression = p match { case left ~ rights =>
     rights.foldLeft(left) { (acc, item) => item(acc) }
   }
@@ -42,10 +52,13 @@ class JessieParser extends JSONTokens {
   }
 */
 
+}
+
+class JessieParser extends JustinParser {
   type Body = List[Either[Statement, Declaration]]
   type Bindings = List[(Pattern, Expression)]
 
-  def start: Parser[Body] = phrase(body)
+  def start: Parser[Program] = phrase(moduleBody)
 
   // TODO: Error if whitespace includes newline
   def NO_NEWLINE: Parser[String] = "" // TODO
@@ -104,14 +117,6 @@ class JessieParser extends JSONTokens {
     "await" | "enum"
       | "implements" | "package" | "protected"
       | "interface" | "private" | "public"
-  )
-
-  def dataLiteral: Parser[DataLiteral] =  positioned(
-    "null"        ^^ { _ => Null }
-      | "false"   ^^ { _ => False }
-      | "true"    ^^ { _ => True }
-      | NUMBER    ^^ Number
-      | STRING    ^^ StrLit
   )
 
   def identName: Parser[String] = IDENT | RESERVED_WORD
@@ -244,6 +249,15 @@ class JessieParser extends JSONTokens {
       | orElseExpr
   ))("expr")
 
+  def assignExpr: Parser[Expression] = (
+        arrowFunc
+        | functionExpr
+        // TODO: lValue postOp
+        // TODO: lValue (EQUALS / assignOp) assignExpr
+        // TODO: super.assignExpr
+        | primaryExpr
+  )
+
   // lValue is only useVar or elementExpr in TinySES.
   // Include only elementExpr from fieldExpr to avoid mutating
   // non-number-named properties.
@@ -336,11 +350,54 @@ class JessieParser extends JSONTokens {
 
   def functionDecl :Parser[Declaration] = "function" ~> defVar ~ ("(" ~> repsep(param, ",") <~! ")") ~ block ^^ {
     case n ~ p ~ b => FunctionDecl(n, p, b) }
+
+  def arrowFunc: Parser[Expression] = (
+    (arrowParams <~ /* TODO: NO_NEWLINE */ "<-") ~ block ^^ { case ps ~ b => Arrow(ps, b) }
+    | (arrowParams /* TODO: NO_NEWLINE */ <~ "<-") ~ assignExpr ^^ { case ps ~ e => Lambda(ps, e) }
+  )
+  def arrowParams: Parser[List[Pattern]] = (
+    IDENT ^^ { case i => List(Def(i)) }
+    | ("(" ~> repsep(param, ",") <~ ")")
+  )
   def methodDef : Parser[Property] = (
     propName ~ ("(" ~> repsep(param, ",") <~! ")") ~ block   ^^ { case n ~ p ~ b => MethodDef(n, p, b) }
       | identGet ~> (propName <~ "(" <~! ")") ~ block ^^ { case n ~ b => Getter(n, List(), b) }
       | identSet ~> propName ~ ("(" ~> param <~! ")") ~  block ^^ { case n ~ p ~ b => Setter(n, List(p), b) }
   )
+
+  def moduleBody: Parser[Program] = rep(statement ^^ { s => Left(s) } | moduleItem ^^ { m => Right(m) } ) ^^ { case items => Program(items) }
+  def moduleItem: Parser[ModuleDeclaration] =
+    // SEMI -> SKIP
+    importDecl | exportDecl // | moduleDeclaration
+
+  def undefined = "undefined" ^^ { case _ => Undefined }
+  def hardenedExpr: Parser[Expression] = ( dataLiteral | undefined
+    | ("harden" ~> "(" ~> (pureExpr | useImport) <~ ")")
+    | useVar )
+  def useImport: Parser[Expression] = IDENT ^^ { case i => Use(i) }
+  def pureExpr =
+    arrowFunc
+    // | super.pureExpr
+
+  def importDecl: Parser[ImportDeclaration] = ("import" ~> importClause) ~ ("from" ~> (STRING ^^ StrLit)) <~ ";" ^^ {
+    case specifiers ~ source => ImportDeclaration(specifiers, source)
+  }
+  def importClause : Parser[List[ModuleSpecifier]] = (
+    // STAR
+    namedImports
+    // TODO ...
+  )
+  def namedImports: Parser[List[ModuleSpecifier]] = "{" ~> repsep(importSpecifier, ",") <~ opt(",") <~ "}"
+  def importSpecifier: Parser[ModuleSpecifier] = (
+     IDENT ~ ("as" ~> defImport) ^^ { case i ~ ImportSpecifier(l, _) => ImportSpecifier(l, Identifier(i)) }
+    | defImport )
+  def defImport: Parser[ImportSpecifier] = IDENT ^^ { case i => ImportSpecifier(Identifier(i), Identifier(i)) }
+
+  def exportDecl: Parser[ModuleDeclaration] = (
+    ("export" ~> "default" ~> exportableExpr <~ ";") ^^ { case e => ExportDefaultDeclaration(e) }
+    // TODO: | EXPORT moduleDeclaration
+  )
+  def exportableExpr = hardenedExpr
 }
 
 object TestSimpleParser extends JessieParser {

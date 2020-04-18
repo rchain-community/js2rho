@@ -12,6 +12,7 @@ case object False extends BooleanLiteral
 case class Number(value: Double) extends DataLiteral
 case class StrLit(value: String) extends DataLiteral
 
+case object Undefined extends Expression
 case class Use(id: String) extends Expression
 
 case class ArrayExpr(items: Expression*) extends Expression {
@@ -93,3 +94,16 @@ sealed trait Declaration extends Positional
 case class Const(bindings: List[(Pattern, Expression)]) extends Declaration
 case class Let(bindings: List[(Pattern, Expression)]) extends Declaration
 case class FunctionDecl(n: Pattern, p: List[Pattern], b: Block) extends Declaration
+
+sealed trait ModuleDeclaration extends Positional
+sealed trait ModuleSpecifier extends Positional
+case class ImportDeclaration(specifiers: List[ModuleSpecifier], source: StrLit) extends ModuleDeclaration
+case class ImportSpecifier(local: Identifier, imported: Identifier) extends ModuleSpecifier
+case class ImportDefaultSpecifier(local: Identifier) extends ModuleSpecifier
+case class ImportNamespaceSpecifier(local: Identifier) extends ModuleSpecifier
+
+case class ExportDefaultDeclaration(e: Expression) extends ModuleDeclaration
+
+case class Identifier(name: String) extends Positional  // estree style rather than Agoric / Jessie style
+
+case class Program(body: List[Either[Statement, ModuleDeclaration]]) extends Positional
