@@ -21,3 +21,8 @@ scalaVersion := "2.12.8"
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.5" % Test
 libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.2"
 // libraryDependencies += "de.srtobi" %%% "escalima" % "0.5"
+
+// https://github.com/scala/scala-xml/wiki/Getting-started
+libraryDependencies += "org.scala-lang.modules" %% "scala-xml" % "1.2.0"
+// https://github.com/spray/spray-json
+libraryDependencies += "io.spray" %%  "spray-json" % "1.3.5"
