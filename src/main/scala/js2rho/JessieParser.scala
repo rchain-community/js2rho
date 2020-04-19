@@ -1,5 +1,6 @@
 /**
-  * based on https://github.com/Agoric/TinySES/blob/master/src/tinyses.js
+  * based on https://github.com/agoric-labs/jessica#grammar
+  * formerly: https://github.com/Agoric/TinySES/blob/master/src/tinyses.js
   */
 
 package js2rho
