@@ -31,6 +31,18 @@ object Printer {
       }
     }
   }
+
+  def inMemory(buf: StringBuilder): Printer = {
+    var indent = 0;
+    return new Printer {
+      def print(txt: String) { buf.append(txt) }
+      def begin(txt: String) { buf.append(txt); indent += 1; this.newline() }
+      def newline() { buf.append("\n" + "  ".repeat(indent)) }
+      def end(txt: String) {
+        this.newline(); buf.append(txt); indent -= 1; this.newline()
+      }
+    }
+  }
 }
 
 trait Process extends Miranda {
@@ -52,22 +64,21 @@ trait RhoBuilder {
   def Drop(n: Name): Process
 
   def Par(p: Process, q: Process): Process
-  // TODO: join
   def receiving(rx: Seq[(Seq[Name], Name)], body: Process): Process
+  def new_(vars: Seq[(String, Option[String])], body: Process): Process
+  def send(dest: Name, procs: Seq[Process]): Process
 
   /*
  * @property {(procs: Process[]) => Process} listExpr
  * @property {(procs: Process[]) => Process} tupleExpr
  * @property {(entries: Array<{ key: string, value: Process }>) => Process} mapExpr
  * @property {(specimen: Process, cases: { lhs: Process, rhs: Process }) => Process } match
- * @property {(dest: Name, procs: Array<Process>) => Process} send
  * @property {(op: BinOp, lhs: Process, rhs: Process) => Process} binop
  * @property {(op: UnOp, arg: Process) => Process} unary
  * @property {(name: Name, args: Array<Name>, body: Process) => Process} contract
  * @property {(n: Name) => Process} Drop
  * @property {(p: Process, q: Process) => Process} Par
  * @property {(p: Process) => Name} Quote
- * @property {(vars: Array<vdecl>, body: Process) => Process} new_
  *
  * @typedef {{ lhs: Name[], rhs: Name}[]} Receipt
 
@@ -159,6 +170,51 @@ class RhoPrinter extends RhoBuilder {
       first = false
     }
   }
+
+  /** @type {(vlist: vdecl[], body: Process) => Process} */
+  def new_(vars: Seq[(String, Option[String])], body: Process): Process = new Process {
+    def _printOn(out: Printer) = {
+      out.newline();
+      out.print("new ")
+      var first = true;
+      for ((local, uri) <- vars) {
+        uri match {
+          case Some(i) => {
+            if (!first) {
+              out.print(",");
+              out.newline();
+            }
+            out.print(s"$local(`$i`)");
+          }
+          case None => {
+              if (!first) {
+                out.print(", ");
+              }
+              out.print(local);
+
+            }
+
+            first = false;
+        }
+      }
+      out.newline();
+      out.begin("in {")
+      body._printOn(out)
+      out.end("}");
+    }
+    def quote() = Quote(new_(vars, body))
+  }
+
+  def send(dest: Name, procs: Seq[Process]): Process = new Process {
+    def _printOn(out: Printer) = {
+      dest._printOn(out)
+      out.print("!(") // TODO: !!
+      printList(out, procs)
+      out.print(")")
+    }
+    def quote() = Quote(send(dest, procs))
+  }
+
   /*
     const listExpr = (procs) => harden({
         _printOn(out) {
@@ -219,15 +275,7 @@ class RhoPrinter extends RhoBuilder {
             first = false
         }
     }
-    const send = (dest, procs) => harden({
-        _printOn: (out) => {
-            dest._printOn(out)
-            out.print(`!(`)  // TODO: !!
-            printList(out, procs)
-            out.print(")")
-        },
-        quote: () => Quote(send(dest, procs))
-    });
+
     const binop = (op, lhs, rhs) => harden({
         _printOn: (out) => {
             lhs._printOn(out)
@@ -256,33 +304,6 @@ class RhoPrinter extends RhoBuilder {
             out.end("}")
         },
         quote: () => Quote(contract(name, args, body))
-    })
-
-    const fmtvdecl = (vd) => typeof vd === 'string' ? vd : `${vd[0]}(\`${vd[1]}\`)`;
-    /** @type {(vlist: vdecl[], body: Process) => Process} */
-    const new_ = (vlist, body) => harden({
-        _printOn: (out) => {
-            out.newline();
-            out.print("new ")
-            let first = true;
-            for (const item of vlist) {
-                if (!first) {
-                    if (typeof item === 'string') {
-                        out.print(', ');
-                    } else {
-                        out.print(',');
-                        out.newline();
-                    }
-                }
-                out.print(fmtvdecl(item));
-                first = false;
-            }
-            out.newline();
-            out.begin("in {")
-            body._printOn(out)
-            out.end("}");
-        },
-        quote: () => Quote(new_(vlist, body))
     })
 
     return harden({
