@@ -33,11 +33,23 @@ class JSONParser extends JSONTokens {
   )
 }
 
+object QuasiParser {
+  val all_pat = "`[^`$$]*`".r
+  val head_pat = "`[^\\\\`\\$]*\\$\\{".r
+  val mid_pat = "\\}[^\\\\`\\$]*\\$\\{".r
+  val tail_pat = "\\}[^\\\\`\\$]*$".r
+}
+
+
 class JustinParser extends JSONParser {
   def binary[R](p: Expression ~ List[Expression => Expression]): Expression = p match { case left ~ rights =>
     rights.foldLeft(left) { (acc, item) => item(acc) }
   }
 
+  def QUASI_ALL: Parser[String] = QuasiParser.all_pat ^^ { case tok => tok.drop(1).dropRight(1) }
+  def QUASI_HEAD: Parser[String] = QuasiParser.head_pat ^^ { case tok => tok.drop(1).dropRight(2) }
+  def QUASI_MID: Parser[String] = QuasiParser.mid_pat ^^ { case tok => tok.drop(1).dropRight(2) }
+  def QUASI_TAIL: Parser[String] = QuasiParser.tail_pat ^^ { case tok => tok.drop(1) }
 
   def qunpack(h: String, /*ms: Option[(Expression, List[String ~ Expression]],*/ t: String): Seq[Either[String, Expression]] = ???  /** TODO  {
     val result = List(h)
@@ -64,14 +76,9 @@ class JessieParser extends JustinParser {
   // TODO: Error if whitespace includes newline
   def NO_NEWLINE: Parser[String] = "" // TODO
 
-  // TODO: quasiliterals aka template literals
-  def HOLE: Parser[String] = "HOLE TODO@@"
-  def QUASI_ALL: Parser[String] = "@@TODO"
-  def QUASI_HEAD: Parser[String] = "@@TODO"
-  def QUASI_MID: Parser[String] = "@@TODO"
-  def QUASI_TAIL: Parser[String] = "@@TODO"
-
   def IDENT: Parser[String] = not(RESERVED_WORD) ~> raw"[a-zA-Z_$$][\w$$]*".r
+
+  def HOLE: Parser[Expression] = "${" ~> expr <~ "}"
 
   // Omit "async", "arguments", and "eval" from IDENT in TinySES even
   // though ES2017 considers them in IDENT.
@@ -141,10 +148,9 @@ class JessieParser extends JustinParser {
       | "[" ~> repsep(arg, ",") <~! "]" ^^ { args => ArrayExpr(args: _*) }
       | "{" ~> repsep(prop, ",") <~! "}" ^^ { ps => ObjectExpr(ps: _*) }
       | functionExpr
-      | quasiExpr
+      | log(quasiExpr)("quasiParser")
       | "(" ~> expr <~! ")"
       | useVar
-      | HOLE ^^ { _ => ExprHole }
   )
 
   def pattern :Parser[Pattern] = log(positioned(
@@ -152,7 +158,7 @@ class JessieParser extends JustinParser {
     | "[" ~> repsep(param, ",") <~ "]"      ^^ { MatchArray(_:_*) }
     | "{" ~> repsep(propParam, ",") <~ "}"  ^^ { MatchObj(_:_*) }
     | defVar
-    | HOLE                                  ^^ { _ => PatternHole }
+    // TODO: | HOLE                                  ^^ { _ => PatternHole }
 				  ))("pattern")
 
   def arg: Parser[Expression] = (

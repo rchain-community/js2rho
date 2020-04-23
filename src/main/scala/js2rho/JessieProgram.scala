@@ -22,7 +22,6 @@ case class ObjectExpr(properties: Property*) extends Expression {
   override def toString() = properties.mkString("{", ", ", "}")
 }
 case class FunctionExpr(n: Option[Pattern], params: List[Pattern], block: Block) extends Expression
-case object ExprHole extends Expression  // ISSUE: really?
 case class Quasi(pieces: Either[String, Expression]*) extends Expression
 case class Get(e: Expression, id: String) extends Expression
 case class Index(e: Expression, ix: Expression) extends Expression
@@ -78,7 +77,7 @@ case class Def(id: String) extends Pattern
 case class MatchData(d: DataLiteral) extends Pattern
 case class MatchArray(ps: Pattern*) extends Pattern
 case class MatchObj(ps: PropParam*) extends Pattern
-case object PatternHole extends Pattern
+// TODO: case object PatternHole extends Pattern
 
 
 sealed trait Statement extends Positional
