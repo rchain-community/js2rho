@@ -9,7 +9,7 @@ import harden from '@agoric/harden';
 // vouching system
 // returns a private notary that offers a public inspector
 // throws problem if the object being vouched is not vouchable
-function makeNotary()  {
+const Notary = harden({ make()  {
     const nonObject = {};
     function unvouchedException(obj) { throw(`Object not vouchable: ${obj}`); }
     let vouchableObject = nonObject;
@@ -33,10 +33,10 @@ function makeNotary()  {
         getInspector()  { return inspector; }
     });
     return notary;
-}
+} });
 
 // create Widget Inc's notary
-const widgetNotary = makeNotary();
+const widgetNotary = Notary.make();
 
 // Order form maker
 function makeOrderForm(salesPerson) {
