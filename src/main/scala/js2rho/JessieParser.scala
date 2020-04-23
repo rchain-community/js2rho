@@ -369,7 +369,8 @@ class JessieParser extends JustinParser {
   def moduleBody: Parser[Program] = rep(statement ^^ { s => Left(s) } | moduleItem ^^ { m => Right(m) } ) ^^ { case items => Program(items) }
   def moduleItem: Parser[ModuleDeclaration] =
     // SEMI -> SKIP
-    importDecl | exportDecl // | moduleDeclaration
+    log(importDecl | exportDecl // | moduleDeclaration
+    )("moduleItem")
 
   def undefined = "undefined" ^^ { case _ => Undefined }
   def hardenedExpr: Parser[Expression] = ( dataLiteral | undefined
@@ -386,6 +387,7 @@ class JessieParser extends JustinParser {
   def importClause : Parser[List[ModuleSpecifier]] = (
     // STAR
     namedImports
+    | defImport ^^ { case spec => List(spec) }
     // TODO ...
   )
   def namedImports: Parser[List[ModuleSpecifier]] = "{" ~> repsep(importSpecifier, ",") <~ opt(",") <~ "}"
@@ -399,28 +401,4 @@ class JessieParser extends JustinParser {
     // TODO: | EXPORT moduleDeclaration
   )
   def exportableExpr = hardenedExpr
-}
-
-object TestSimpleParser extends JessieParser {
-    def main(args: Array[String]) = {
-      import java.nio.file.Path
-      import java.nio.file.Paths
-
-      val currentRelativePath = Paths.get("")
-      println(currentRelativePath.toAbsolutePath().toString())
-
-      test1("[1, true, false, \"abc\", {x} ];")
-
-      for (srcFileName <- args) {
-        println(srcFileName)
-        val src = Source.fromFile(srcFileName).getLines.mkString("\n")
-        test1(src)
-      }
-    }
-
-  def test1(src: String) = parse(phrase(start), src) match {
-    case Success(matched,_) => println(matched)
-    case Failure(msg,_) => println("FAILURE: " + msg)
-    case Error(msg,_) => println("ERROR: " + msg)
-  }
 }
