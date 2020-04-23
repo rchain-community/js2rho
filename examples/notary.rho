@@ -18,6 +18,7 @@ contract Notary(@"make", __return, __throw) = {
             vouchableObjectCh!(*nonObject) |
             new tryCh, startCh in {
                 obj!("startVouch", *startCh) |
+                // ISSUE: this translation isn't quite right; it could hang where js does not
                 for (_ <- startCh; @vouchableObject <- vouchableObjectCh) {
                   if (vouchableObject == *nonObject) {
                     __throw!({"Object not vouchable": *obj })
