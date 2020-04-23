@@ -11,7 +11,7 @@ import harden from '@agoric/harden';
 // throws problem if the object being vouched is not vouchable
 function makeNotary()  {
     const nonObject = {};
-    function unvouchedException(obj) { throw(`Object not vouchable: $obj`); }
+    function unvouchedException(obj) { throw(`Object not vouchable: ${obj}`); }
     let vouchableObject = nonObject;
     const inspector = harden({
         vouch(obj) {
