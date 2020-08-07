@@ -12,7 +12,7 @@ import scala.util.parsing.combinator.syntactical.StandardTokenParsers
 // ISSUE: use JavaTokenParsers instead?
 class JSONTokens extends RegexParsers {
   override def skipWhitespace = true
-  override val whiteSpace: Regex = raw"(\s*//[^\n]*\n\s*)+|(\s+)".r
+  override val whiteSpace: Regex = "(\\s*//[^\\n]*\\n\\s*)+|(\\s+)".r
   def NUMBER: Parser[Double] = raw"-?\d+(?:\.\d+)?(?:[eE]-?\d+)?".r ^^ { n =>
     n.toDouble
   }
