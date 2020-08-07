@@ -6,25 +6,14 @@ import scala.io.Source
 import org.scalatest.FlatSpec
 
 class WalnutPatternsTest extends FlatSpec {
-  val notaryRes = getClass.getResource("/examples/notary.js").toURI()
-  lazy val notaryJs = Source.fromFile(notaryRes).getLines.mkString("\n")
   lazy val jp = new JessieParser()
-  lazy val notaryAST = jp.parse(jp.start, notaryJs)
 
-  "quasi regex" should "be right" in {
-    assert("`abc`".matches(QuasiParser.all_pat.regex))
-    assert("`abc${".matches(QuasiParser.head_pat.regex))
-    assert("}abc${".matches(QuasiParser.mid_pat.regex))
-    assert("}abc".matches(QuasiParser.tail_pat.regex))
-    // TODO: handle `Object not vouchable: $obj`
+  def parse(res: java.net.URL): jp.ParseResult[_] = {
+    val js = Source.fromFile(res.toURI()).getLines.mkString("\n")
+    return jp.parse(jp.startProgram, js)
   }
 
-  "notaryRes" should "be a URI" in {
-    (notaryRes, notaryJs) match {
-      case (_: URI, _: String) => null
-      case _                   => assert(false)
-    }
-  }
+  lazy val notaryAST = parse(getClass.getResource("/examples/notary.js"))
 
   "identifier" should "parse" in {
     jp.parse(jp.IDENT, "abc") match {
@@ -33,12 +22,60 @@ class WalnutPatternsTest extends FlatSpec {
     }
   }
 
+  "hello_world.js" should "parse" in {
+    parse(getClass.getResource("/examples/hello_world.js")) match {
+      case jp.Success(ast, _) => ast
+      case _                  => assert(false)
+      case jp.Failure(msg,_)  => {
+        println("FAILURE: " + msg)
+        assert(false);
+      }
+      case jp.Error(msg,_)    => {
+        println("ERROR: " + msg)
+        assert(false);
+      }
+      case _                  => assert(false)
+    }
+  }
+
+  "quasi regex" should "be right" in {
+    assert("`abc`".matches(QuasiParser.all_pat.regex))
+    assert("`abc${".matches(QuasiParser.head_pat.regex))
+    assert("}abc${".matches(QuasiParser.mid_pat.regex))
+    assert("}abc`".matches(QuasiParser.tail_pat.regex))
+    assert("}`".matches(QuasiParser.tail_pat.regex))
+    // TODO: handle `Object not vouchable: $obj`
+  }
+
+  "quasiExpr" should "parse as Expression" in {
+    jp.parse(jp.expr, "`Object not vouchable: ${obj}`") match {
+      case jp.Success(Quasi(Left(_), Right(_)), _) => ()
+      case _                  => assert(false)
+      case jp.Failure(msg,_)  => {
+        println("FAILURE: " + msg)
+        assert(false);
+      }
+      case jp.Error(msg,_)    => {
+        println("ERROR: " + msg)
+        assert(false);
+      }
+      case _                  => assert(false)
+    }
+  }
+
   "notary.js" should "parse" in {
     notaryAST match {
       case jp.Success(ast, _) => ast
       case _                  => assert(false)
-//    case Failure(msg,_) => println("FAILURE: " + msg)
-//    case Error(msg,_) => println("ERROR: " + msg)
+      case jp.Failure(msg,_)  => {
+        println("FAILURE: " + msg)
+        assert(false);
+      }
+      case jp.Error(msg,_)    => {
+        println("ERROR: " + msg)
+        assert(false);
+      }
+      case _                  => assert(false)
     }
   }
 }

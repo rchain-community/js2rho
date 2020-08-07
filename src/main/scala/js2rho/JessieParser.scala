@@ -24,6 +24,25 @@ class JSONTokens extends RegexParsers {
 }
 
 class JSONParser extends JSONTokens {
+  def startExpr = phrase(assignExpr)
+
+  // to be extended
+  def primaryExpr = dataStructure
+
+  def dataStructure = (dataLiteral
+    | array
+    | record
+    //  | HOLE
+  )
+
+  // An expression without side-effects.
+  // to be extended
+  def pureExpr: Parser[Expression] = (dataLiteral
+    | pureArray
+    | pureRecord
+    // | HOLE
+  )
+
   def dataLiteral: Parser[DataLiteral] = positioned(
     "null" ^^ { _ =>
       Null
@@ -33,13 +52,37 @@ class JSONParser extends JSONTokens {
       | NUMBER ^^ Number
       | STRING ^^ StrLit
   )
+
+  def pureArray = "[" ~> repsep(pureExpr, ",") <~! "]" ^^ { args => ArrayExpr(args: _*) }
+  def array = "[" ~> repsep(element, ",") <~! "]" ^^ { args => ArrayExpr(args: _*) }
+
+  // to be extended
+  def element: Parser[Expression] = assignExpr
+
+  // The JavaScript and JSON grammars calls records "objects"
+  def pureRecord: Parser[Expression] =
+    "{" ~> repsep(purePropDef, ",") <~! "}" ^^ { ps => ObjectExpr(ps: _*) }
+
+  def record: Parser[Expression] =
+    "{" ~> repsep(propDef, ",") <~! "}" ^^ { ps => ObjectExpr(ps: _*) }
+
+  // to be extended
+  def purePropDef: Parser[Property] = (propName <~ ":") ~ pureExpr ^^ { case k ~ e => Prop(k, e) }
+  // to be extended
+  def propDef: Parser[Property] = (propName <~ ":") ~ assignExpr ^^ { case k ~ e => Prop(k, e) }
+
+  // to be extended
+  def propName: Parser[PropName] = STRING ^^ PropKey // TODO: if (js === '__proto__') return FAIL;
+
+  // to be overridden
+  def assignExpr: Parser[Expression] = primaryExpr
 }
 
 object QuasiParser {
-  val all_pat = "`[^`$$]*`".r
-  val head_pat = "`[^\\\\`\\$]*\\$\\{".r
-  val mid_pat = "\\}[^\\\\`\\$]*\\$\\{".r
-  val tail_pat = "\\}[^\\\\`\\$]*$".r
+  val all_pat = "`[^`$$]*`".r // TODO: ~"\${"
+  val head_pat = "`[^$]*\\$\\{".r
+  val mid_pat = "}[^$]*\\$\\{".r
+  val tail_pat = "}[^$]*`".r
 }
 
 class JustinParser extends JSONParser {
@@ -49,52 +92,12 @@ class JustinParser extends JSONParser {
         rights.foldLeft(left) { (acc, item) => item(acc) }
     }
 
-  def undefined = "undefined" ^^^ Undefined
-
-  def QUASI_ALL: Parser[String] = QuasiParser.all_pat ^^ {
-    case tok => tok.drop(1).dropRight(1)
-  }
-  def QUASI_HEAD: Parser[String] = QuasiParser.head_pat ^^ {
-    case tok => tok.drop(1).dropRight(2)
-  }
-  def QUASI_MID: Parser[String] = QuasiParser.mid_pat ^^ {
-    case tok => tok.drop(1).dropRight(2)
-  }
-  def QUASI_TAIL: Parser[String] = QuasiParser.tail_pat ^^ {
-    case tok => tok.drop(1)
-  }
-
-  def qunpack(
-      h: String,
-      /*ms: Option[(Expression, List[String ~ Expression]],*/ t: String
-  ): Seq[Either[String, Expression]] = ??? /** TODO  {
-    val result = List(h)
-    if (ms.size == 1) {
-      val List([m, pairs]) = ms
-      result.push(m)
-      for (let (q,e) <- pairs) {
-        result.push(q,e)
-      }
-    }
-    result.push(t)
-    return result
-  }
-  */
-
-}
-
-class JessieParser extends JustinParser {
-  type Body = List[Either[Statement, Declaration]]
-  type Bindings = List[(Pattern, Expression)]
-
-  def start: Parser[Program] = phrase(moduleBody)
-
   // TODO: Error if whitespace includes newline
   def NO_NEWLINE: Parser[String] = "" // TODO
 
-  def IDENT: Parser[String] = not(RESERVED_WORD) ~> raw"[a-zA-Z_$$][\w$$]*".r
+  def identName: Parser[String] = IDENT | RESERVED_WORD
 
-  def HOLE: Parser[Expression] = "${" ~> expr <~ "}"
+  def IDENT: Parser[String] = not(RESERVED_WORD) ~> raw"[a-zA-Z_$$][\w$$]*".r
 
   // Omit "async", "arguments", and "eval" from IDENT in TinySES even
   // though ES2017 considers them in IDENT.
@@ -143,9 +146,87 @@ class JessieParser extends JustinParser {
       | "interface" | "private" | "public"
   )
 
-  def identName: Parser[String] = IDENT | RESERVED_WORD
+  def QUASI_ALL: Parser[String] = QuasiParser.all_pat ^^ {
+    case tok => tok.drop(1).dropRight(1)
+  }
+  def QUASI_HEAD: Parser[String] = QuasiParser.head_pat ^^ {
+    case tok => tok.drop(1).dropRight(2)
+  }
+  def QUASI_MID: Parser[String] = QuasiParser.mid_pat ^^ {
+    case tok => tok.drop(1).dropRight(2)
+  }
+  def QUASI_TAIL: Parser[String] = QuasiParser.tail_pat ^^ {
+    case tok => tok.drop(1)
+  }
+
+  def qunpack(
+    h: String,
+    ms: Option[(Expression ~ List[String ~ Expression])],
+      t: String
+  ): Seq[Either[String, Expression]] = {
+    Seq(Left(h)) ++ (ms match {
+      case None => Seq()
+      case Some(e ~ ses) => Seq(Right(e)) ++ ses.flatMap {
+        case s ~ e => Seq(Left(s), Right(e))
+      }
+    })
+  }
+
+  def undefined = "undefined" ^^^ Undefined
+
+  override def dataStructure = undefined | super.dataStructure;
+
   def useVar: Parser[Expression] = IDENT ^^ Use
+
+  // only used in extensions of Justin
   def defVar: Parser[Pattern] = IDENT ^^ Def
+
+  override def primaryExpr: Parser[Expression] = log(positioned(
+    super.primaryExpr
+      | log(quasiExpr)("quasiExpr")
+      | "(" ~> expr <~! ")"
+      | useVar
+  ))("primaryExpr")
+
+  override def pureExpr: Parser[Expression] = positioned(
+    super.pureExpr
+      | "(" ~> expr <~! ")"
+      | useVar
+  )
+
+  override def element = super.element | "..." ~> expr ^^ SpreadExpr
+
+  override def propDef = (super.propDef
+    | useVar ^^ { case Use(id) => Prop(PropKey(id), Use(id)) }
+    | ("..." ~> assignExpr) ^^ SpreadObj)
+  override def purePropDef = (super.purePropDef
+    | useVar ^^ { case Use(id) => Prop(PropKey(id), Use(id)) }
+    | ("..." ~> assignExpr) ^^ SpreadObj)
+
+  // No computed property name
+  override def propName: Parser[PropName] = (
+    super.propName
+      | identName ^^ PropKey
+      | NUMBER ^^ { n: Double => PropIx(n) }
+  )
+
+  def quasiExpr: Parser[Expression] = (
+    QUASI_ALL ^^ { a => Quasi(Left(a)) }
+      | QUASI_HEAD ~ ((expr ~ ((QUASI_MID ~ expr) *)) ?) ~ log(QUASI_TAIL)("QUASI_TAIL") ^^ {
+        case h ~ ms ~ t => Quasi(qunpack(h, ms, t): _*)
+      }
+  )
+
+  def expr = assignExpr
+}
+
+class JessieParser extends JustinParser {
+  type Body = List[Either[Statement, Declaration]]
+  type Bindings = List[(Pattern, Expression)]
+
+  def startProgram: Parser[Program] = phrase(log(moduleBody)("moduleBody"))
+
+  def later: Parser[String] = "~."  // TODO: followed by non-digit
 
   // For most identifiers that ES2017 treats as IDENT but recognizes
   // as pseudo-keywords in a context dependent manner, TinySES simply makes
@@ -157,16 +238,9 @@ class JessieParser extends JustinParser {
   def identGet: Parser[String] = "get"
   def identSet: Parser[String] = "set"
 
-  // TinySES primaryExpr does not include "this", ClassExpression,
-  // GeneratorExpression, or RegularExpressionLiteral.
-  def primaryExpr: Parser[Expression] = positioned(
-    dataLiteral
-      | "[" ~> repsep(arg, ",") <~! "]" ^^ { args => ArrayExpr(args: _*) }
-      | "{" ~> repsep(prop, ",") <~! "}" ^^ { ps => ObjectExpr(ps: _*) }
+  override def primaryExpr: Parser[Expression] = positioned(
+    super.primaryExpr
       | functionExpr
-      | log(quasiExpr)("quasiParser")
-      | "(" ~> expr <~! ")"
-      | useVar
   )
 
   def bindingPattern: Parser[Pattern] =
@@ -185,20 +259,19 @@ class JessieParser extends JustinParser {
       )
     )("pattern")
 
-  def arg: Parser[Expression] =
-    ("..." ~> expr ^^ SpreadExpr
-      | expr)
-
   def param: Parser[Pattern] =
     ("..." ~> pattern ^^ Rest
       | defVar ~ ("=" ~> expr) ^^ { case v ~ e => Optional(v, e) }
       | pattern)
 
-  def prop: Parser[Property] = (
-    "..." ~> expr ^^ SpreadObj
-      | (propName <~ ":") ~ expr ^^ { case k ~ e => Prop(k, e) }
-      | methodDef
-      | IDENT ^^ { id => Prop(PropKey(id), Use(id)) }
+  override def propDef: Parser[Property] = (
+    methodDef
+    | super.propDef
+  )
+
+  override def purePropDef: Parser[Property] = (
+    methodDef
+    | super.purePropDef
   )
 
   def propParam: Parser[PropParam] = (
@@ -207,21 +280,6 @@ class JessieParser extends JustinParser {
       | (IDENT <~ "=") ~ expr ^^ { case id ~ e      => OptionalProp(id, id, e) }
       | IDENT ^^ { id => MatchProp(PropKey(id), Def(id)) }
   )
-  // No computed property name
-  def propName: Parser[PropName] = (
-    (identName | STRING) ^^ PropKey
-      | NUMBER ^^ { n: Double => PropIx(n) }
-  )
-
-  def quasiExpr: Parser[Expression] = (
-    QUASI_ALL ^^ { a =>
-      Quasi(Left(a))
-    }
-      | QUASI_HEAD ~ (((expr ~ (QUASI_MID ~ expr) *) ?) ~ QUASI_TAIL) ^^ {
-        case h ~ (ms ~ t) => Quasi(qunpack(h, t): _*)
-      }
-  )
-  def later: Parser[String] = NO_NEWLINE ~> "!"
 
   // No "new", "super", or MetaProperty. Without "new" we don't need
   // separate MemberExpr and CallExpr productions.
@@ -267,6 +325,10 @@ class JessieParser extends JustinParser {
     Unary(Positive, e)
   }
 
+  def arg: Parser[Expression] =
+    (assignExpr
+      | "..." ~> assignExpr ^^ SpreadExpr)
+
   // No bitwise operators, "instanceof", "in", "==", or "!=".  Unlike
   // ES8, none of the relational operators (including equality)
   // associate. To help readers, mixing relational operators always
@@ -294,7 +356,7 @@ class JessieParser extends JustinParser {
   // TODO: Need to be able to write (1,array[i])(args), which
   // either requires that we readmit the comma expression, or
   // that we add a weird special case to the grammar.
-  def expr: Parser[Expression] =
+  override def expr: Parser[Expression] =
     log(
       positioned(
         lValue ~ (assignOp ~ expr) ^^ {
@@ -305,7 +367,7 @@ class JessieParser extends JustinParser {
       )
     )("expr")
 
-  def assignExpr: Parser[Expression] = (
+  override def assignExpr: Parser[Expression] = (
     arrowFunc
       | functionExpr
     // TODO: lValue postOp
@@ -473,12 +535,11 @@ class JessieParser extends JustinParser {
         | useVar
     )("hardenedExpr")
   def useImport: Parser[Expression] = IDENT ^^ { case i => Use(i) }
-  def pureExpr =
+  override def pureExpr =
     log(
       arrowFunc
-        | dataLiteral
-      // | super.pureExpr
-    )("pureExpr WIP")
+        | super.pureExpr
+    )("pureExpr")
 
   def importDecl: Parser[ImportDeclaration] =
     ("import" ~> importClause) ~ ("from" ~> (STRING ^^ StrLit)) <~ ";" ^^ {
