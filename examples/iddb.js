@@ -134,15 +134,14 @@ async function main() {
   await db1.create_table("player");
   console.log("create_table player done");
   const [ok, key] = await db1.INSERT("player", null, {"id": 123, "name": "Pete Rose", "average": 400});
-  console.log("INSERT done");
   assert(ok);
   logKeys("inserted", key);
   const [ok2, key2] = await db1.UPDATE("player", {"id": 123}, {"id": 123, "name": "Pete Rose", "average": 250});
-  console.log("UPDATE done");
+  assert(ok2);
   logKeys("updated", key2);
-  const key3 = await db1.DELETE("player", {"id": 123}, null);
-  console.log("DELETE done");
-  logKeys("delted", key3);
+  const [ok3, key3] = await db1.DELETE("player", {"id": 123}, null);
+  assert(ok3);
+  logKeys("deleted", key3);
 }
 
 main()
