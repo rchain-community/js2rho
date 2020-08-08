@@ -1,6 +1,4 @@
-/**
- * IdDB - DB with id primary key column in all tables
- */
+// IdDB - DB with id primary key column in all tables
 // TODO: @agoric/harden
 import { harden } from './lib/js2rho.js';
 // TODO: @rchain-community/js2rho
@@ -12,14 +10,8 @@ import { tuple, Channel, RhoMap, RhoSet, quote, deref } from './lib/js2rho.js';
 import { deployId, deployerId } from './lib/rchain.js';
 import { insertArbitrary } from './lib/registry.js';
 
-export default
-async function main() {
-  // register IdDB constructor contract
-  const uri = await insertArbitrary(IdDB);
-  console.log({"IdDB URI": uri});
-  deployId(uri);
-
-  function IdDB() {
+const IdDB = harden({
+  make() {
     const tablesCh = Channel();
     tablesCh(RhoMap()); // table_name -> channel with Set of keys
     const self = harden({
@@ -120,10 +112,18 @@ async function main() {
     });
     return self;
   }
+});
+
+export default
+async function main() {
+  // register IdDB constructor contract
+  const uri = await insertArbitrary(IdDB);
+  console.log({"IdDB URI": uri});
+  deployId(uri);
 
   // testing
   const assert = ok => { if (!ok) { throw new Error('assertion failed'); } };
-  const db1 = await IdDB();
+  const db1 = await IdDB.make();
   console.log({"db1": deref(db1)});
   async function logKeys(label, key) {
     console.log({[label]: key});

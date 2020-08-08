@@ -13,8 +13,6 @@ class WalnutPatternsTest extends FlatSpec {
     return jp.parse(jp.startProgram, js)
   }
 
-  lazy val notaryAST = parse(getClass.getResource("/examples/notary.js"))
-
   "identifier" should "parse" in {
     jp.parse(jp.IDENT, "abc") match {
       case jp.Success(id, _) => assert(id == "abc")
@@ -63,6 +61,25 @@ class WalnutPatternsTest extends FlatSpec {
     }
   }
 
+  lazy val iddbAST = parse(getClass.getResource("/examples/iddb.js"))
+
+  "iddb.js" should "parse" in {
+    iddbAST match {
+      case jp.Success(ast, _) => ast
+      case _                  => assert(false)
+      case jp.Failure(msg,_)  => {
+        println("FAILURE: " + msg)
+        assert(false);
+      }
+      case jp.Error(msg,_)    => {
+        println("ERROR: " + msg)
+        assert(false);
+      }
+      case _                  => assert(false)
+    }
+  }
+
+  lazy val notaryAST = parse(getClass.getResource("/examples/notary.js"))
   "notary.js" should "parse" in {
     notaryAST match {
       case jp.Success(ast, _) => ast
