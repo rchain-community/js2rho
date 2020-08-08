@@ -43,7 +43,12 @@ case object Void extends UnOp
 case object TypeOf extends UnOp
 case object Positive extends UnOp
 case object Negative extends UnOp
+case object BitwiseNegate extends UnOp
 case object Not extends UnOp
+case object PreIncr extends UnOp
+case object PreDecr extends UnOp
+case object PostIncr extends UnOp
+case object PostDecr extends UnOp
 
 case class Binary(op: String, lt: Expression, rt: Expression) extends Expression // TODO: sum type for BinaryOp
 
@@ -76,6 +81,7 @@ case class OptionalProp(k: String, k2: String, e: Expression) extends PropParam 
 
 sealed trait Pattern extends Positional
 case class Def(id: String) extends Pattern
+case object MatchUndefined extends Pattern
 case class MatchData(d: DataLiteral) extends Pattern
 case class MatchArray(ps: Pattern*) extends Pattern
 case class MatchObj(ps: PropParam*) extends Pattern

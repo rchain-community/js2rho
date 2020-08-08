@@ -32,42 +32,26 @@ class JSONParser extends JSONTokens {
   def dataStructure = (dataLiteral
     | array
     | record
-    //  | HOLE
-  )
-
-  // An expression without side-effects.
-  // to be extended
-  def pureExpr: Parser[Expression] = (dataLiteral
-    | pureArray
-    | pureRecord
-    // | HOLE
+    // TODO:  | HOLE
   )
 
   def dataLiteral: Parser[DataLiteral] = positioned(
-    "null" ^^ { _ =>
-      Null
-    }
-      | "false" ^^ { _ => False }
-      | "true" ^^ { _ => True }
+    "null" ^^^ Null
+      | "false" ^^^ False
+      | "true" ^^^ True
       | NUMBER ^^ Number
       | STRING ^^ StrLit
   )
 
-  def pureArray = "[" ~> repsep(pureExpr, ",") <~! "]" ^^ { args => ArrayExpr(args: _*) }
   def array = "[" ~> repsep(element, ",") <~! "]" ^^ { args => ArrayExpr(args: _*) }
 
   // to be extended
   def element: Parser[Expression] = assignExpr
 
   // The JavaScript and JSON grammars calls records "objects"
-  def pureRecord: Parser[Expression] =
-    "{" ~> repsep(purePropDef, ",") <~! "}" ^^ { ps => ObjectExpr(ps: _*) }
-
   def record: Parser[Expression] =
     "{" ~> repsep(propDef, ",") <~! "}" ^^ { ps => ObjectExpr(ps: _*) }
 
-  // to be extended
-  def purePropDef: Parser[Property] = (propName <~ ":") ~ pureExpr ^^ { case k ~ e => Prop(k, e) }
   // to be extended
   def propDef: Parser[Property] = (propName <~ ":") ~ assignExpr ^^ { case k ~ e => Prop(k, e) }
 
@@ -91,6 +75,8 @@ class JustinParser extends JSONParser {
       case left ~ rights =>
         rights.foldLeft(left) { (acc, item) => item(acc) }
     }
+
+  override def startExpr = assignExpr
 
   // TODO: Error if whitespace includes newline
   def NO_NEWLINE: Parser[String] = "" // TODO
@@ -159,22 +145,17 @@ class JustinParser extends JSONParser {
     case tok => tok.drop(1)
   }
 
-  def qunpack(
-    h: String,
-    ms: Option[(Expression ~ List[String ~ Expression])],
-      t: String
-  ): Seq[Either[String, Expression]] = {
-    Seq(Left(h)) ++ (ms match {
-      case None => Seq()
-      case Some(e ~ ses) => Seq(Right(e)) ++ ses.flatMap {
-        case s ~ e => Seq(Left(s), Right(e))
-      }
-    })
-  }
+  // TODO: strip ``s?
+  def qunpack(h: String, e: Expression, ms: List[String ~ Expression], t: String):
+      Seq[Either[String, Expression]] = Seq(Left(h), Right(e)) ++ ms.flatMap {
+    case s ~ e => Seq(Left(s), Right(e))
+  } ++ Seq(Left(t))
 
   def undefined = "undefined" ^^^ Undefined
 
   override def dataStructure = undefined | super.dataStructure;
+
+  // TODO: trailing commas in record, array
 
   def useVar: Parser[Expression] = IDENT ^^ Use
 
@@ -183,23 +164,14 @@ class JustinParser extends JSONParser {
 
   override def primaryExpr: Parser[Expression] = log(positioned(
     super.primaryExpr
-      | log(quasiExpr)("quasiExpr")
+      | quasiExpr
       | "(" ~> expr <~! ")"
       | useVar
   ))("primaryExpr")
 
-  override def pureExpr: Parser[Expression] = positioned(
-    super.pureExpr
-      | "(" ~> expr <~! ")"
-      | useVar
-  )
-
-  override def element = super.element | "..." ~> expr ^^ SpreadExpr
+  override def element = super.element | "..." ~> assignExpr ^^ SpreadExpr
 
   override def propDef = (super.propDef
-    | useVar ^^ { case Use(id) => Prop(PropKey(id), Use(id)) }
-    | ("..." ~> assignExpr) ^^ SpreadObj)
-  override def purePropDef = (super.purePropDef
     | useVar ^^ { case Use(id) => Prop(PropKey(id), Use(id)) }
     | ("..." ~> assignExpr) ^^ SpreadObj)
 
@@ -210,14 +182,93 @@ class JustinParser extends JSONParser {
       | NUMBER ^^ { n: Double => PropIx(n) }
   )
 
+  // TODO: strip ``s in result?
   def quasiExpr: Parser[Expression] = (
     QUASI_ALL ^^ { a => Quasi(Left(a)) }
-      | QUASI_HEAD ~ ((expr ~ ((QUASI_MID ~ expr) *)) ?) ~ log(QUASI_TAIL)("QUASI_TAIL") ^^ {
-        case h ~ ms ~ t => Quasi(qunpack(h, ms, t): _*)
+      | QUASI_HEAD ~ expr ~ rep(QUASI_MID ~ expr) ~ QUASI_TAIL ^^ {
+        case h ~ e ~ ms ~ t => Quasi(qunpack(h, e, ms, t): _*)
       }
   )
 
-  def expr = assignExpr
+  def memberPostOp: Parser[Expression => Expression] = (
+    "[" ~> indexExpr <~ "]" ^^ { ix => e: Expression => Index(e, ix) }
+      | "." ~> identName ^^ { id => e: Expression => Get(e, id) }
+      | quasiExpr ^^ { q => e: Expression => Tag(e, q) }
+  )
+  def callPostOp = memberPostOp | args
+
+  // Because Justin and Jessie have no "new" or "super", they don't need
+  // to distinguish callExpr from memberExpr. So justin omits memberExpr
+  // and newExpr. Instead, in Justin, callExpr jumps directly to
+  // primaryExpr and updateExpr jumps directly to callExpr.
+
+  def callExpr = primaryExpr ~ (callPostOp *) ^^ { binary }
+
+  // Restrict index access to number-names, including
+  // floating point, NaN, Infinity, and -Infinity.
+  def indexExpr: Parser[Expression] = (
+    NUMBER ^^ Number
+      | "+" ~> unaryExpr ^^ { e => Unary(Positive, e) }
+  )
+
+  def args: Parser[Expression => Expression] = "(" ~> repsep(arg, ",") <~! ")" ^^ {
+    es => e: Expression => Call(e, es)
+  }
+
+  def arg: Parser[Expression] =
+    (assignExpr
+      | "..." ~> assignExpr ^^ SpreadExpr)
+
+  def updateExpr = callExpr
+
+  def unaryExpr: Parser[Expression] = (
+    preOp ~ unaryExpr ^^ { case op ~ e => op(e) }
+      | updateExpr
+  )
+
+  // No prefix or postfix "++" or "--".
+  // No "delete".
+  def op1(op: UnOp)(tok: String)(e: Expression) = Unary(op, e)
+  def preOp: Parser[Expression => Expression] = (
+    "void" ^^ { op1(Void) }
+      | "typeof" ^^ { op1(TypeOf) }
+      | prePre
+  )
+  def prePre: Parser[Expression => Expression] = (
+      "+" ^^ { op1(Positive) }
+      | "-" ^^ { op1(Negative) }
+      | "~" ^^ { op1(BitwiseNegate) }
+      | "!" ^^ { op1(Not) }
+  )
+
+  def powExpr: Parser[Expression] = (
+    updateExpr ~ ("**" ~> powExpr) ^^ { case e1 ~ e2 => Binary("**", e1, e2) }
+      | unaryExpr
+  )
+
+  def binStep(p: String ~ Expression)(lt: Expression): Expression = p match {
+    case tok ~ rt => Binary(tok, lt, rt)
+  }
+  def multExpr: Parser[Expression] =
+    powExpr ~ ((
+      (("*" | "/" | "%") ~ powExpr) ^^ binStep
+    ) *) ^^ { binary }
+
+  def addExpr: Parser[Expression] =
+    multExpr ~ (((("+" | "-") ~ multExpr) ^^ binStep) *) ^^ { binary }
+  // TODO: shiftExpr
+  // TODO: eagerExpr
+  def relExpr: Parser[Expression] =
+    addExpr ~ ((((relOp ~ addExpr) ^^ binStep) ?) ^^ { _.toList }) ^^ { binary }
+  def relOp: Parser[String] = "<" | ">" | "<=" | ">=" | "===" | "!=="
+  def andThenExpr: Parser[Expression] =
+    relExpr ~ ((("&&" ~ relExpr) ^^ binStep) *) ^^ { binary }
+  def orElseExpr: Parser[Expression] =
+    andThenExpr ~ ((("||" ~ andThenExpr) ^^ binStep) *) ^^ { binary }
+  // TODO: condExpr
+
+  override def assignExpr = orElseExpr
+  def expr = log(assignExpr)("expr")
 }
 
 class JessieParser extends JustinParser {
@@ -228,192 +279,77 @@ class JessieParser extends JustinParser {
 
   def later: Parser[String] = "~."  // TODO: followed by non-digit
 
-  // For most identifiers that ES2017 treats as IDENT but recognizes
-  // as pseudo-keywords in a context dependent manner, TinySES simply makes
-  // keywords. However, this would be too painful for "get" and
-  // "set", so instead we ???use our parser-generator's support syntactic
-  // predicates. TODO: Is it really too painful? Try it.
-  // identGet ::= IDENT ^^ { id => if (id == "get") { id } else { FAIL }}
-  // identSet ::= IDENT ^^ { id => if (id == "set") { id } else { FAIL }}
-  def identGet: Parser[String] = "get"
-  def identSet: Parser[String] = "set"
-
   override def primaryExpr: Parser[Expression] = positioned(
     super.primaryExpr
       | functionExpr
   )
-
-  def bindingPattern: Parser[Pattern] =
-    positioned(
-      "[" ~> repsep(param, ",") <~ "]" ^^ { MatchArray(_: _*) }
-        | "{" ~> repsep(propParam, ",") <~ "}" ^^ { MatchObj(_: _*) }
-    )
-
-  def pattern: Parser[Pattern] =
-    log(
-      positioned(
-        dataLiteral ^^ MatchData
-          | bindingPattern
-          | defVar
-        // TODO: | HOLE                                  ^^ { _ => PatternHole }
-      )
-    )("pattern")
-
-  def param: Parser[Pattern] =
-    ("..." ~> pattern ^^ Rest
-      | defVar ~ ("=" ~> expr) ^^ { case v ~ e => Optional(v, e) }
-      | pattern)
 
   override def propDef: Parser[Property] = (
     methodDef
     | super.propDef
   )
 
-  override def purePropDef: Parser[Property] = (
-    methodDef
-    | super.purePropDef
+  // Recognize pre-increment/decrement.
+  override def prePre = ("++" ^^ op1(PreIncr) | "--" ^^ op1(PreDecr)) | super.prePre
+
+  // Extend to recognize proposed eventual get syntax,
+  // as well as computed indices and postfix increment/decrement.
+  override def memberPostOp: Parser[Expression => Expression] = (
+    super.memberPostOp
+      | "[" ~> assignExpr <~ "]" ^^ {
+        ix => e: Expression => Index(e, ix) }
+      | later ~> "[" ~> indexExpr <~ "]" ^^ {
+        ix => e: Expression => IndexLater(e, ix) }
+      | later ~> identName ^^ {
+        id => e: Expression => GetLater(e, id) }
   )
 
-  def propParam: Parser[PropParam] = (
-    "..." ~> pattern ^^ RestObj
-      | (propName <~ ":") ~ pattern ^^ { case k ~ p => MatchProp(k, p) }
-      | (IDENT <~ "=") ~ expr ^^ { case id ~ e      => OptionalProp(id, id, e) }
-      | IDENT ^^ { id => MatchProp(PropKey(id), Def(id)) }
-  )
-
-  // No "new", "super", or MetaProperty. Without "new" we don't need
-  // separate MemberExpr and CallExpr productions.
-  // Recognize b!foo(x) as distinct from calling b!foo post-parse.
-  def postExpr: Parser[Expression] = primaryExpr ~ (postOp *) ^^ { binary }
-  def postOp: Parser[Expression => Expression] = (
-    "." ~> identName ^^ { id => e: Expression =>
-      Get(e, id)
-    }
-      | "[" ~> indexExpr <~ "]" ^^ { ix => e: Expression => Index(e, ix) }
-      | "(" ~> repsep(arg, ",") <~! ")" ^^ { args => e: Expression =>
+  // Extend to recognize proposed eventual send syntax.
+  // We distinguish b~.foo(x) from calling b~.foo by a post-parsing pass
+  override def callPostOp = (
+    super.callPostOp
+    | "(" ~> repsep(arg, ",") <~! ")" ^^ { args => e: Expression =>
         Call(e, args)
-      }
-      | quasiExpr ^^ { q => e: Expression => Tag(e, q) }
-      | later ~> identName ^^ { id => e: Expression => GetLater(e, id) }
-      | later ~> "[" ~> indexExpr <~ "]" ^^ { ix => e: Expression =>
-        IndexLater(e, ix)
       }
       | later ~> "(" ~> repsep(arg, ",") <~! ")" ^^ { args => e: Expression =>
         CallLater(e, args)
       }
   )
-  // Omit ("delete" fieldExpr) to avoid mutating properties
-  def preExpr: Parser[Expression] = (
-    preOp ~ preExpr ^^ { case op ~ e => op(e) }
-      | postExpr
-  )
 
-  def op1(op: UnOp)(tok: String)(e: Expression) = Unary(op, e)
-  // No prefix or postfix "++" or "--".
-  // No "delete". No bitwise "~".
-  def preOp: Parser[Expression => Expression] = (
-    "void" ^^ { op1(Void) }
-      | "typeof" ^^ { op1(TypeOf) }
-      | "+" ^^ { op1(Positive) }
-      | "-" ^^ { op1(Negative) }
-      | "!" ^^ { op1(Not) }
-  )
-
-  // Restrict index access to number-names, including
-  // floating point, NaN, Infinity, and -Infinity.
-  def indexExpr: Parser[Expression] = "+" ~> preExpr ^^ { e =>
-    Unary(Positive, e)
-  }
-
-  def arg: Parser[Expression] =
-    (assignExpr
-      | "..." ~> assignExpr ^^ SpreadExpr)
-
-  // No bitwise operators, "instanceof", "in", "==", or "!=".  Unlike
-  // ES8, none of the relational operators (including equality)
-  // associate. To help readers, mixing relational operators always
-  // requires explicit parens.
-  // TODO: exponentiation "**" operator.
-  def binStep(p: String ~ Expression)(lt: Expression): Expression = p match {
-    case tok ~ rt => Binary(tok, lt, rt)
-  }
-  def multExpr: Parser[Expression] =
-    preExpr ~ ((
-      (("*" | "/" | "%") ~ preExpr) ^^ binStep
-    ) *) ^^ { binary }
-
-  def addExpr: Parser[Expression] =
-    multExpr ~ (((("+" | "-") ~ multExpr) ^^ binStep) *) ^^ { binary }
-  def relExpr: Parser[Expression] =
-    addExpr ~ ((((relOp ~ addExpr) ^^ binStep) ?) ^^ { _.toList }) ^^ { binary }
-  def relOp: Parser[String] = "<" | ">" | "<=" | ">=" | "===" | "!=="
-  def andThenExpr: Parser[Expression] =
-    relExpr ~ ((("&&" ~ relExpr) ^^ binStep) *) ^^ { binary }
-  def orElseExpr: Parser[Expression] =
-    andThenExpr ~ ((("||" ~ andThenExpr) ^^ binStep) *) ^^ { binary }
-  // No trinary ("?:") expression
-  // No comma expression, so assignment expression is expr.
-  // TODO: Need to be able to write (1,array[i])(args), which
-  // either requires that we readmit the comma expression, or
-  // that we add a weird special case to the grammar.
-  override def expr: Parser[Expression] =
-    log(
-      positioned(
-        lValue ~ (assignOp ~ expr) ^^ {
-          case lv ~ (op ~ rv) => Assign(op, lv, rv)
-        }
-          | arrow
-          | orElseExpr
-      )
-    )("expr")
+  def postOp = "++" ^^ op1(PostIncr) | "--" ^^ op1(PostDecr)
 
   override def assignExpr: Parser[Expression] = (
     arrowFunc
       | functionExpr
     // TODO: lValue postOp
-    // TODO: lValue (EQUALS / assignOp) assignExpr
-    // TODO: super.assignExpr
+      | (lValue ~ ("=" | assignOp)) ~ assignExpr ^^ { case (lhs ~ op) ~ rhs => Assign(op, lhs, rhs) }
+      | super.assignExpr
       | primaryExpr
   )
 
-  // lValue is only useVar or elementExpr in TinySES.
-  // Include only elementExpr from fieldExpr to avoid mutating
-  // non-number-named properties.
-  // Syntactically disallow ("delete" IDENT).
-  // No pseudo-pattern lValues.
-  // TODO: re-allow assignment to statically named fields,
-  // since it is useful during initialization and prevented
-  // thereafter by mandatory tamper-proofing.
-  def lValue = elementExpr | useVar
-  def elementExpr = (
-    primaryExpr ~ ("[" ~> indexExpr <~! "]") ^^ { case pe ~ e => Index(pe, e) }
+
+  // In Jessie, an lValue is only a variable, a computed index-named
+  // property (an array element), or a statically string-named
+  // property.
+  // We allow assignment to statically string-named fields, since it
+  // is useful during initialization and prevented thereafter by
+  // mandatory tamper-proofing.
+  def lValue = (
+    primaryExpr ~ ("[" ~> indexExpr <~! "]") ^^ {
+      case pe ~ e => Index(pe, e) }
       | primaryExpr ~ (later ~> "[" ~> indexExpr <~! "]") ^^ {
-        case pe ~ e => IndexLater(pe, e)
-      }
-  )
-  def fieldExpr: Parser[Expression] = (
-    primaryExpr ~ ("." ~> identName) ^^ { case pe ~ id => Get(pe, id) }
+        case pe ~ e => IndexLater(pe, e) }
+      | primaryExpr ~ ("." ~> identName) ^^ {
+        case pe ~ id => Get(pe, id) }
       | primaryExpr ~ (later ~> "." ~> identName) ^^ {
-        case pe ~ id => GetLater(pe, id)
-      }
-      | elementExpr
+        case pe ~ id => GetLater(pe, id) }
+      | useVar
   )
-  // No bitwise operators
-  def assignOp = "=" | "*=" | "|=" | "%=" | "+=" | "-="
-  // The expr form must come after the block form, to make proper use
-  // of PEG prioritized choice.
-  def arrow: Parser[Expression] = (
-    params ~ (NO_NEWLINE ~> "=>" ~> block) ^^ { case ps ~ b => Arrow(ps, b) }
-      | params ~ (NO_NEWLINE ~> "=>" ~> expr) ^^ {
-        case ps ~ e => Lambda(ps, e)
-      }
-  )
-  def params: Parser[List[Pattern]] = (
-    IDENT ^^ { id =>
-      List(Def(id))
-    }
-      | "(" ~> repsep(param, ",") <~! ")"
-  )
+
+  def assignOp = ("*=" | "|=" | "%=" | "+=" | "-="
+    | "<<=" | ">>=" | ">>>="
+    | "&=" | "^=" | "|="
+    | "**=")
 
   // No "var", empty statement, "with", "do/while", or "for/in". None
   // of the insane variations of "for". Only blocks are accepted for
@@ -441,12 +377,26 @@ class JessieParser extends JustinParser {
       )
     )("statement")
 
+  // TODO: def arm = block
+  // TODO: elseArm
+  // TODO: breakableStatement
+
   // Each case branch must end in a terminating statement.
   def terminator: Parser[Statement] = (
-    "return" ~> ((NO_NEWLINE ~> expr) ?) <~! ";" ^^ { Return(_) }
+    "continue" ~> ((NO_NEWLINE ~> IDENT) ?) <~! ";" ^^ { Continue(_) }
+      // TODO: continue ident, break ident
       | "break" ~> ((NO_NEWLINE ~> IDENT) ?) <~! ";" ^^ { Break(_) }
-      | "continue" ~> ((NO_NEWLINE ~> IDENT) ?) <~! ";" ^^ { Continue(_) }
+      | "return" ~> ((NO_NEWLINE ~> expr) ?) <~! ";" ^^ { Return(_) }
       | "throw" ~> expr <~! ";" ^^ { Throw(_) }
+  )
+
+  def block: Parser[Block] = log("{" ~> body <~ "}")("block") ^^ { Block(_) }
+  def body: Parser[Body] = rep(statementItem)
+  // declaration must come first, so that PEG will prioritize
+  // function declarations over exprStatement. TODO: test
+  def statementItem = (
+    declaration ^^ { Right(_) }
+      | statement ^^ { Left(_) }
   )
 
   // No "class" declaration.
@@ -460,8 +410,49 @@ class JessieParser extends JustinParser {
     "const" ^^^ { Const }
       | "let" ^^^ { Let }
   )
-  // Initializer is mandatory
-  def binding = pattern ~ ("=" ~> expr) ^^ { case p ~ e => (p, e) }
+
+  // TODO: forOfBinding
+
+  def binding = (
+    bindingPattern ~ ("=" ~> assignExpr) ^^ { case p ~ e => (p, e) }
+      | defVar ~ ("=" ~> assignExpr) ^^ { case p ~ e => (p, e) }
+      | defVar ^^ { case p => (p, Undefined) }
+  )
+
+  def bindingPattern: Parser[Pattern] =
+    positioned(
+      "[" ~> repsep(elementParam, ",") <~ "]" ^^ { MatchArray(_: _*) }
+        | "{" ~> repsep(propParam, ",") <~ "}" ^^ { MatchObj(_: _*) }
+    )
+
+  def pattern: Parser[Pattern] =
+    log(
+      positioned(
+        bindingPattern
+          | defVar
+          | "undefined" ^^^ MatchUndefined
+          | dataLiteral ^^ MatchData
+        // TODO: | HOLE                                  ^^ { _ => PatternHole }
+      )
+    )("pattern")
+
+  def elementParam = param
+
+  def param: Parser[Pattern] =
+    ("..." ~> pattern ^^ Rest
+      | defVar ~ ("=" ~> expr) ^^ { case v ~ e => Optional(v, e) }
+      | pattern)
+
+  def propParam: Parser[PropParam] = (
+    "..." ~> pattern ^^ RestObj
+      | (propName <~ ":") ~ pattern ^^ { case k ~ p => MatchProp(k, p) }
+      | (IDENT <~ "=") ~ expr ^^ { case id ~ e      => OptionalProp(id, id, e) }
+      | IDENT ^^ { id => MatchProp(PropKey(id), Def(id)) }
+  )
+
+  // TODO: exprStatement, cantStartExprStatement
+  // TODO: terminatedBody, clause, caseLabel
+
 
   /** TODO
   def catcher = "catch" ~> ("(" ~> pattern <~ ")") ~ block   ^^ { case p ~ b => Catch(p, b) }
@@ -473,9 +464,6 @@ class JessieParser extends JustinParser {
     | "default" ~ ":"                                    ^^ { Default(_) }
   )
     **/
-  def block: Parser[Block] = log("{" ~> body <~ "}")("block") ^^ { Block(_) }
-  def body: Parser[Body] =
-    rep(statement ^^ { Left(_) } | declaration ^^ { Right(_) })
   def functionExpr: Parser[Expression] =
     "function" ~> (defVar ?) ~ ("(" ~> repsep(param, ",") <~! ")") ~ block ^^ {
       case n ~ p ~ b => FunctionExpr(n, p, b)
@@ -502,10 +490,10 @@ class JessieParser extends JustinParser {
     propName ~ ("(" ~> repsep(param, ",") <~! ")") ~ block ^^ {
       case n ~ p ~ b => MethodDef(n, p, b)
     }
-      | identGet ~> (propName <~ "(" <~! ")") ~ block ^^ {
+      | "get" ~> (propName <~ "(" <~! ")") ~ block ^^ {
         case n ~ b => Getter(n, List(), b)
       }
-      | identSet ~> propName ~ ("(" ~> param <~! ")") ~ block ^^ {
+      | "set" ~> propName ~ ("(" ~> param <~! ")") ~ block ^^ {
         case n ~ p ~ b => Setter(n, List(p), b)
       }
   )
@@ -524,22 +512,12 @@ class JessieParser extends JustinParser {
     ) ^^ { case decls => Const(decls) }
 
   def moduleBinding: Parser[(Pattern, Expression)] = (
-    (bindingPattern <~ "=") ~ hardenedExpr ^^ { case p ~ e => (p, e) }
-      | (defVar <~ "=") ~ hardenedExpr ^^ { case p ~ e     => (p, e) }
+    (bindingPattern <~ "=") ~ expr ^^ { case p ~ e => (p, e) }
+      | (defVar <~ "=") ~ expr ^^ { case p ~ e     => (p, e) }
       | defVar ^^ { case Def(id)                           => (Def(id), Use(id)) }
   )
-  def hardenedExpr: Parser[Expression] =
-    log(
-      dataLiteral | undefined
-        | ("harden" ~> "(" ~> (pureExpr | useImport) <~ ")")
-        | useVar
-    )("hardenedExpr")
+
   def useImport: Parser[Expression] = IDENT ^^ { case i => Use(i) }
-  override def pureExpr =
-    log(
-      arrowFunc
-        | super.pureExpr
-    )("pureExpr")
 
   def importDecl: Parser[ImportDeclaration] =
     ("import" ~> importClause) ~ ("from" ~> (STRING ^^ StrLit)) <~ ";" ^^ {
@@ -568,5 +546,5 @@ class JessieParser extends JustinParser {
     }
       | "export" ~> moduleDeclaration
   )
-  def exportableExpr = hardenedExpr
+  def exportableExpr = expr
 }

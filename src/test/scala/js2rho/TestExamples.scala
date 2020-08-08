@@ -47,7 +47,7 @@ class WalnutPatternsTest extends FlatSpec {
 
   "quasiExpr" should "parse as Expression" in {
     jp.parse(jp.expr, "`Object not vouchable: ${obj}`") match {
-      case jp.Success(Quasi(Left(_), Right(_)), _) => ()
+      case jp.Success(Quasi(Left(_), Right(_), Left("`")), _) => ()
       case _                  => assert(false)
       case jp.Failure(msg,_)  => {
         println("FAILURE: " + msg)
