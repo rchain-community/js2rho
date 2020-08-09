@@ -12,7 +12,8 @@ import scala.util.parsing.combinator.syntactical.StandardTokenParsers
 // ISSUE: use JavaTokenParsers instead?
 class JSONTokens extends RegexParsers {
   override def skipWhitespace = true
-  override val whiteSpace: Regex = "(\\s*//[^\\n]*\\n\\s*)+|(\\s+)".r
+  // TODO: finish multi-line commentr regex
+  override val whiteSpace: Regex = "(\\s*//[^\\n]*\\n\\s*)+|\\s*/\\*[^*]*\\*/|(\\s+)".r
   def NUMBER: Parser[Double] = raw"-?\d+(?:\.\d+)?(?:[eE]-?\d+)?".r ^^ { n =>
     n.toDouble
   }
@@ -162,12 +163,12 @@ class JustinParser extends JSONParser {
   // only used in extensions of Justin
   def defVar: Parser[Pattern] = IDENT ^^ Def
 
-  override def primaryExpr: Parser[Expression] = log(positioned(
+  override def primaryExpr: Parser[Expression] = positioned(
     super.primaryExpr
       | quasiExpr
       | "(" ~> expr <~! ")"
       | useVar
-  ))("primaryExpr")
+  )
 
   override def element = super.element | "..." ~> assignExpr ^^ SpreadExpr
 
@@ -285,7 +286,7 @@ class JessieParser extends JustinParser {
   )
 
   override def propDef: Parser[Property] = (
-    methodDef
+    log(methodDef)("methodDef")
     | super.propDef
   )
 
@@ -475,10 +476,10 @@ class JessieParser extends JustinParser {
     }
 
   def arrowFunc: Parser[Expression] = (
-    (arrowParams <~ /* TODO: NO_NEWLINE */ "<-") ~ block ^^ {
+    (arrowParams <~ /* TODO: NO_NEWLINE */ "=>") ~ block ^^ {
       case ps ~ b => Arrow(ps, b)
     }
-      | (arrowParams /* TODO: NO_NEWLINE */ <~ "<-") ~ assignExpr ^^ {
+      | (arrowParams /* TODO: NO_NEWLINE */ <~ "=>") ~ assignExpr ^^ {
         case ps ~ e => Lambda(ps, e)
       }
   )

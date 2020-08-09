@@ -23,7 +23,6 @@ class WalnutPatternsTest extends FlatSpec {
   "hello_world.js" should "parse" in {
     parse(getClass.getResource("/examples/hello_world.js")) match {
       case jp.Success(ast, _) => ast
-      case _                  => assert(false)
       case jp.Failure(msg,_)  => {
         println("FAILURE: " + msg)
         assert(false);
@@ -48,7 +47,6 @@ class WalnutPatternsTest extends FlatSpec {
   "quasiExpr" should "parse as Expression" in {
     jp.parse(jp.expr, "`Object not vouchable: ${obj}`") match {
       case jp.Success(Quasi(Left(_), Right(_), Left("`")), _) => ()
-      case _                  => assert(false)
       case jp.Failure(msg,_)  => {
         println("FAILURE: " + msg)
         assert(false);
@@ -66,7 +64,6 @@ class WalnutPatternsTest extends FlatSpec {
   "iddb.js" should "parse" in {
     iddbAST match {
       case jp.Success(ast, _) => ast
-      case _                  => assert(false)
       case jp.Failure(msg,_)  => {
         println("FAILURE: " + msg)
         assert(false);
@@ -83,7 +80,6 @@ class WalnutPatternsTest extends FlatSpec {
   "notary.js" should "parse" in {
     notaryAST match {
       case jp.Success(ast, _) => ast
-      case _                  => assert(false)
       case jp.Failure(msg,_)  => {
         println("FAILURE: " + msg)
         assert(false);
