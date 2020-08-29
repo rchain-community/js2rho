@@ -4,6 +4,14 @@ export function tuple(...xs) {
   return harden(xs);
 }
 
+export function bundlePlus(proc) {
+  return harden(proc);
+}
+
+export function RhoList(...items) {
+  return harden(items); // different methods?
+}
+
 function makeMap(c0, ...c1n) {
   const m = new Map(c0);
   for (const col of c1n) {
@@ -69,13 +77,19 @@ const chan2proc = new WeakMap();
 let id = 0;
 
 export function Channel(proc) {
+  id++;
   if (!proc) {
-    proc = Object.create(null);
+    const me = id;
+    proc = harden({
+      toByteArray() {
+        return Buffer.from([1, 2, 3, me]);
+      },
+      toString: () => `Unf(${me})`,
+    });
   }
   if (proc2chan.has(proc)) {
     return proc2chan.get(proc);
   }
-  id++;
   // console.log('new channel', { id });
   proc2chan.set(proc, push);
   chan2proc.set(push, proc);
@@ -118,6 +132,7 @@ export function Channel(proc) {
   });
 
   push.id = id;
+  push.toString = () => `@{${proc}})`;
 
   return harden(push);
 }
