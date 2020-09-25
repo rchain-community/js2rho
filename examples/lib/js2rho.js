@@ -1,4 +1,4 @@
-export const harden = (x) => Object.freeze(x);
+const { freeze: harden } = Object; // TODO: @agoric/harden?
 
 export function tuple(...xs) {
   return harden(xs);
@@ -35,7 +35,7 @@ function makeMap(c0, ...c1n) {
     _entries: () => m.entries(),
   });
 }
-export const RhoMap = (...entries) => makeMap(entries);
+export const RhoMap = (init) => makeMap(Object.entries(init || {}));
 
 function* filter(predicate, items) {
   for (const item of items) {
@@ -75,6 +75,21 @@ const chan2proc = new WeakMap();
 
 let id = 0;
 
+/**
+ * @template T
+ * @typedef {{
+ *   peek: () => Promise<T>,
+ *   get: () => Promise<T>,
+ *   put: (p: T) => void
+ * }} ChannelT
+ */
+
+/**
+ *
+ * @param {T} proc
+ * @returns { ChannelT<T> }
+ * @template T
+ */
 export function Channel(proc) {
   id++;
   if (!proc) {
@@ -109,6 +124,7 @@ export function Channel(proc) {
       q.push(proc);
     }
   }
+  push.put = push;
 
   push.get = () =>
     new Promise((resolve, _reject) => {

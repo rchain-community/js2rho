@@ -1,118 +1,104 @@
 // UNTESTED sketch
 // import { E } from "@agoric/eventual-send";
 // import REVAddress from "rho:rchain:REVAddress";
-import { lookup } from "./lib/registry";
-import { Channel } from "./lib/js2rho";
+import { Channel } from "./lib/js2rho.js"; // @TODO: rename to rspace?
+import { Ok, Err, maybe, unwrap } from "./lib/result.js";
+import * as _registry from "./lib/registry.js";
+import { RevAddress, Nat } from "./lib/rev.js";
 const { freeze: harden } = Object; // TODO? @agoric/harden
 
-// TODO: move to lib
 /**
- * @typedef { { message: string } } Problem
- *
  * // TODO: @agoric/nat to handle overflow
- * @typedef { number } Nat
+ * @typedef { number } NatT
  *
  * @typedef { number } Timestamp
+ *
+ * @typedef { import('./lib/result').Problem} Problem
+ * @typedef { import('./lib/rev').REVAddress} REVAddress
  */
-
 /**
- * @typedef { { ok: true, result: T } | { ok: false, problem: Problem } } Result<T>
+ * @typedef { import('./lib/result').Result<T>} Result<T>
+ * @template T
+ */
+/**
+ * @typedef { import('./lib/js2rho').ChannelT<T>} ChannelT<T>
  * @template T
  */
 
-/**
- * @param { T } result
- * @returns { Result<T> }
- * @template T
- */
-function Ok(result) {
-  return harden({ ok: true, result });
-}
-
-/**
- * @param {Problem} problem
- * @returns { Result<T> }
- * @template T
- */
-function Err(problem) {
-  return harden({ ok: false, problem });
-}
-
-const ListOps = harden({
+export default async function main({ registry }) {
+  console.log("break!!!");
   /**
-   * @param {T[]} items
-   * @param {(item: T) => Promise<Result<U>>} f
-   * @returns { Promise<{ results: U[], problems: Problem[]}> }
-   * @template T
-   * @template U
+   * @type { import('./lib/list-ops').ListOpsT}
    */
-  async mapCollect(items, f) {
-    throw { message: "not impl" };
-  },
-});
+  const ListOps = await registry.lookup(`rho:lang:listOps`);
+  /**
+   * @type { typeof import('./lib/rev').RevVault }
+   */
+  const RevVault = await registry.lookup(`rho:rchain:revVault`);
 
-/**
- * clue for js2rho to handle throw
- * @param { () => Promise<T> } thunk
- * @returns { Promise<Result<T>>}
- * @template T
- */
-async function maybe(thunk) {
-  try {
-    return Ok(await thunk());
-  } catch (err) {
-    return Err(err);
-  }
-}
-
-/**
- * @typedef {{
- *   deposit: (allegedPayment: unknown) => Promise<Result<void>>,
- *   getBalance: () => Promise<Nat>
- * }} Purse
- */
-const REVIssuer = harden({
-  /** @type { () => Promise<Purse> } */
-  async makeEmptyPurse() {
-    // TODO: await E(REVAddress).fromUnforgeable(refundKey);
-    const self = harden({
-      /** @type { (pmt: unknown) => Promise<Result<void>> } */
-      async deposit(_pmt) {
-        return Err({ message: "not impl" });
-      },
-      async getBalance() {
-        throw { message: "not impl" };
-      },
-    });
-    return self;
-  },
-});
-
-export default async function main() {
   /** @type {() => Promise<{ timestamp: Timestamp }> } */
-  const blockInfo = await lookup("rho:rchain:blockInfo");
+  const blockInfo = await registry.lookup("rho:rchain:blockInfo");
+
+  /**
+   * @typedef {{
+   *   deposit: (allegedPayment: unknown) => Promise<Result<unknown>>,
+   *   getBalance: () => Promise<Nat>,
+   *   getAddress: () => Promise<string>,
+   * }} Purse
+   */
+  const REVIssuer = harden({
+    /** @type { () => Promise<Purse> } */
+    async makeEmptyPurse() {
+      /** @type { REVAddress } */
+      let myAddr;
+      // could do these next 2 in parallel with Promise.all
+
+      const self = harden({
+        /** @type { (pmt: unknown) => Promise<Result<unknown>> } */
+        async deposit(pmt) {
+          // @ts-ignore getBalan
+          const amount = await pmt.getBalance();
+          Nat(amount);
+          // @ts-ignore
+          const pmtAddr = await pmt.getAddress();
+          const pmtAuthKey = await RevVault.unforgeableAuthKey(pmt);
+          const result = await myVault.transfer(pmtAddr, amount, pmtAuthKey);
+          return result;
+        },
+        async getAddress() {
+          return myAddr;
+        },
+        async getBalance() {
+          return myVault.getBalance();
+        },
+      });
+      myAddr = await RevAddress.fromUnforgeable(self);
+      const found = await RevVault.findOrCreate(myAddr);
+      if (!found.ok) {
+        throw new TypeError(
+          "huh? how could findOrCreate fail on unf rev addr?"
+        );
+      }
+      const myVault = found.result;
+      return self;
+    },
+  });
 
   const CrowdFund = harden({
     /**
      * @param {Nat} target pledge target in 10^-8 REV
      * @param {Timestamp} deadline compared to block timestamp
+     * // TODO: how reliable is block timestamp?
+     *
+     * TODO: parameterize issuer, esp for testing.
      */
-    make(target, deadline) {
+    async make(target, deadline) {
       // TODO: rename to pledges
       /**
-       * @template T
-       * @typedef {{
-       *   peek: () => Promise<T>,
-       *   get: () => Promise<T>,
-       *   put: (p: T) => void
-       * }} ChannelT
-       */
-      /**
-       * TODO: rename purses to payments? or refunds?
-       * @typedef {{total: Nat, purses: Purse[]}} Holdings
+       * @typedef {{balance: Nat, pledges: Purse[]}} Holdings
        */
       /** @type { ChannelT<Holdings>} */
-      const holdingsCh = Channel({ total: 0, purses: [] });
+      const holdingsCh = Channel({ balance: 0, pledges: [] });
 
       const check = harden({
         /**
@@ -120,7 +106,7 @@ export default async function main() {
          * @returns {Promise<Result<Nat>>} current pledges
          */
         async pledgeTarget(met) {
-          const { total: pledges } = await holdingsCh.peek();
+          const { balance: pledges } = await holdingsCh.peek();
           return maybe(async () => {
             if (pledges >= target === met) {
               return pledges;
@@ -136,6 +122,7 @@ export default async function main() {
         /**
          * @param {boolean} met sense of the test
          * @returns {Promise<Result<Timestamp>>} current time
+         * // TODO: gather details on blockinfo
          */
         async deadline(met) {
           const { timestamp: now } = await blockInfo();
@@ -160,10 +147,10 @@ export default async function main() {
        */
       const ContributorSeat = harden({
         /**
-         * @param {Purse} refund
+         * @param {Purse} pledge
          * @returns { ContributorSeatT }
          */
-        make(refund) {
+        make(pledge) {
           return harden({
             /**
              * @return {Promise<Result<Purse>>}
@@ -172,6 +159,7 @@ export default async function main() {
               const pledges = await check.pledgeTarget(false);
               switch (pledges.ok) {
                 case false:
+                  // move message back here?
                   return pledges;
                 case true: {
                   const now = await check.deadline(true);
@@ -179,7 +167,7 @@ export default async function main() {
                     case false:
                       return now;
                     case true:
-                      return Ok(refund);
+                      return Ok(pledge);
                   }
                 }
               }
@@ -202,10 +190,10 @@ export default async function main() {
               // commit point
               const holdings = await holdingsCh.get();
               const { problems } = await ListOps.mapCollect(
-                holdings.purses,
+                holdings.pledges,
                 (pmt) => benefit.deposit(pmt)
               );
-              holdingsCh.put(harden({ total: 0, purses: [] }));
+              holdingsCh.put(harden({ balance: 0, pledges: [] }));
               return Ok({ benefit, problems });
           }
         },
@@ -216,7 +204,7 @@ export default async function main() {
          * @returns { Promise<{terms: {target: Nat, deadline: Timestamp}, pledges: Nat}> }
          */
         async status() {
-          const { total: pledges } = await holdingsCh.peek();
+          const { balance: pledges } = await holdingsCh.peek();
           return harden({ terms: { target, deadline }, pledges });
         },
 
@@ -226,19 +214,20 @@ export default async function main() {
          * @returns {Promise<Result<ContributorSeatT>>}
          */
         async contribute(pmt) {
-          const refund = await REVIssuer.makeEmptyPurse();
-          const amt = await refund.deposit(pmt);
+          const pledge = await REVIssuer.makeEmptyPurse();
+          const amt = await pledge.deposit(pmt);
           switch (amt.ok) {
             case false:
               return amt; // transfer failed
             case true: {
-              const contributorSeat = ContributorSeat.make(refund);
-              const { total: pledges, purses } = await holdingsCh.get();
-              const p = await refund.getBalance();
+              // TODO: check that the amount is > 0? worth a transaction fee?
+              const contributorSeat = ContributorSeat.make(pledge);
+              const { balance, pledges } = await holdingsCh.get();
+              const pbal = await pledge.getBalance();
               const more = {
-                // TODO: Nat, maybe to handle overflow
-                total: pledges + p,
-                purses: [...purses, refund],
+                // TODO: refund in case of overflow?
+                balance: Nat(balance + pbal),
+                pledges: [...pledges, pledge],
               };
               holdingsCh.put(more);
               return Ok(contributorSeat);
@@ -249,4 +238,36 @@ export default async function main() {
       return harden({ beneficiarySeat, publicFacet });
     },
   });
+
+  /** @type { (clock: () => Timestamp) => Promise<void> } */
+  async function test(clock) {
+    console.log("testing");
+    const REV = 10 ** 8;
+    const DAY = 24 * 60 * 60 * 1000;
+    const now = clock();
+    const { beneficiarySeat, publicFacet } = await CrowdFund.make(
+      100000 * REV,
+      now + 14 * DAY
+    );
+    console.log("fund:", { beneficiarySeat, publicFacet });
+    console.log("claim early", await beneficiarySeat.claim());
+
+    const ej = (problem) => {
+      throw problem;
+    };
+    /** @type { Purse } */
+    const bobPurse = await REVIssuer.makeEmptyPurse();
+    const bobSeat = unwrap(await publicFacet.contribute(bobPurse), ej);
+    console.log(await bobSeat.withdraw());
+    console.log("claim again", await beneficiarySeat.claim());
+  }
+
+  await test(() => Date.now());
+
+  // TODO: run tests; insert only if they pass
+  return registry.insertArbitrary(CrowdFund);
 }
+
+main({ registry: _registry })
+  .then(() => console.log("done"))
+  .catch((err) => console.error(err));

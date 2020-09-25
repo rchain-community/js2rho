@@ -1,4 +1,5 @@
-import { RevVault } from './rev.js';
+import ListOps from "./list-ops.js";
+import { RevVault } from "./rev.js";
 
 // const registry = new WeakMap();
 const registry = new Map();
@@ -12,11 +13,18 @@ export async function insertArbitrary(proc) {
   return uri;
 }
 
+/**
+ * @param {URI} proc
+ * @typedef { string } URI
+ */
 export async function lookup(proc) {
-  if (proc == 'rho:rchain:revVault') {
-    return RevVault;
+  switch (proc) {
+    case `rho:rchain:revVault`:
+      return RevVault;
+    case `rho:lang:listOps`:
+      return ListOps;
+    default:
+      // console.log('lookup', proc, registry.get(proc), registry);
+      return registry.get(proc) || null;
   }
-
-  // console.log('lookup', proc, registry.get(proc), registry);
-  return registry.get(proc) || null;
 }
