@@ -1,6 +1,6 @@
-const harden = x => Object.freeze(x);
+const { freeze: harden } = Object;
 
-import { Channel } from './js2rho.js';
+import { Channel } from "./rspace.js";
 
 export const deployId = Channel();
 export const deployerId = Channel();

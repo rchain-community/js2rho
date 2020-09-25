@@ -1,7 +1,7 @@
 // UNTESTED sketch
 // import { E } from "@agoric/eventual-send";
 // import REVAddress from "rho:rchain:REVAddress";
-import { Channel } from "./lib/js2rho.js"; // @TODO: rename to rspace?
+import { Channel } from "./lib/rspace.js";
 import { Ok, Err, maybe, unwrap } from "./lib/result.js";
 import * as _registry from "./lib/registry.js";
 import { RevAddress, Nat } from "./lib/rev.js";
@@ -21,7 +21,7 @@ const { freeze: harden } = Object; // TODO? @agoric/harden
  * @template T
  */
 /**
- * @typedef { import('./lib/js2rho').ChannelT<T>} ChannelT<T>
+ * @typedef { import('./lib/rspace').ChannelT<T>} ChannelT<T>
  * @template T
  */
 
