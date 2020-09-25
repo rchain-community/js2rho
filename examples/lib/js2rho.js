@@ -1,4 +1,4 @@
-export const harden = x => Object.freeze(x);
+export const harden = (x) => Object.freeze(x);
 
 export function tuple(...xs) {
   return harden(xs);
@@ -28,15 +28,14 @@ function makeMap(c0, ...c1n) {
   return harden({
     _size,
     size: () => _size,
-    contains: k => m.has(k),
-    get: k => m.get(k),
+    contains: (k) => m.has(k),
+    get: (k) => m.get(k),
     set: (k, v) => makeMap(m.entries(), [[k, v]]),
-    union: m2 => makeMap(m.entries(), m2._entries()),
+    union: (m2) => makeMap(m.entries(), m2._entries()),
     _entries: () => m.entries(),
   });
 }
 export const RhoMap = (...entries) => makeMap(entries);
-
 
 function* filter(predicate, items) {
   for (const item of items) {
@@ -62,9 +61,9 @@ function makeSet(c0, ...c1n) {
   return harden({
     _size,
     size: () => _size,
-    contains: k => s.has(k),
-    union: s2 => makeSet(s.values(), s2._values()),
-    delete: k => makeSet(filter(item => item !== k, s.values())),
+    contains: (k) => s.has(k),
+    union: (s2) => makeSet(s.values(), s2._values()),
+    delete: (k) => makeSet(filter((item) => item !== k, s.values())),
     _values: () => s.values(),
   });
 }
@@ -111,25 +110,27 @@ export function Channel(proc) {
     }
   }
 
-  push.get = () => new Promise((resolve, _reject) => {
-    if (q.length) {
-      // console.log('get HIT', id);
-      resolve(q.shift());
-    } else {
-      // console.log('get miss', id);
-      getters.push(resolve);
-    }
-  });
+  push.get = () =>
+    new Promise((resolve, _reject) => {
+      if (q.length) {
+        // console.log('get HIT', id);
+        resolve(q.shift());
+      } else {
+        // console.log('get miss', id);
+        getters.push(resolve);
+      }
+    });
 
-  push.peek = () => new Promise((resolve, _reject) => {
-    if (q.length) {
-      // console.log('peek HIT', id);
-      resolve(q[0]);
-    } else {
-      // console.log('peek miss', id);
-      peekers.push(resolve);
-    }
-  });
+  push.peek = () =>
+    new Promise((resolve, _reject) => {
+      if (q.length) {
+        // console.log('peek HIT', id);
+        resolve(q[0]);
+      } else {
+        // console.log('peek miss', id);
+        peekers.push(resolve);
+      }
+    });
 
   push.id = id;
   push.toString = () => `@{${proc}})`;
@@ -137,7 +138,7 @@ export function Channel(proc) {
   return harden(push);
 }
 
-const zip = (...rows) => [...rows[0]].map((_, c) => rows.map(row => row[c]));
+const zip = (...rows) => [...rows[0]].map((_, c) => rows.map((row) => row[c]));
 
 function listEq(a, b) {
   if (!Array.isArray(b)) {
