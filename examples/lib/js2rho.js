@@ -92,7 +92,10 @@ let id = 0;
  */
 export function Channel(proc) {
   id++;
-  if (!proc) {
+  const q = [];
+  if (proc) {
+    q.push(proc);
+  } else {
     const me = id;
     proc = harden({
       toByteArray() {
@@ -108,7 +111,6 @@ export function Channel(proc) {
   proc2chan.set(proc, push);
   chan2proc.set(push, proc);
 
-  const q = [];
   const getters = [];
   const peekers = [];
 
