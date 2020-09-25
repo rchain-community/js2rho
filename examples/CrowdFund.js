@@ -264,8 +264,9 @@ export default async function main({ registry }) {
 
   await test(() => Date.now());
 
+  console.log("tests passed! inserting into registry");
   // TODO: run tests; insert only if they pass
-  return registry.insertArbitrary(CrowdFund);
+  console.log(await registry.insertArbitrary(CrowdFund));
 }
 
 main({ registry: _registry })
