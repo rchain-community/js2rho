@@ -13,6 +13,16 @@ export async function insertArbitrary(proc) {
   return uri;
 }
 
+let blockNumber = 1000;
+let timestamp = 2000;
+
+async function blockData() {
+  blockNumber += 7;
+  timestamp += 27 * 1000;
+  const sender = "111AAbc.sender";
+  return [blockNumber, timestamp, sender];
+}
+
 /**
  * @param {URI} proc
  * @typedef { string } URI
@@ -23,6 +33,8 @@ export async function lookup(proc) {
       return RevVault;
     case `rho:lang:listOps`:
       return ListOps;
+    case `rho:block:data`:
+      return blockData;
     default:
       // console.log('lookup', proc, registry.get(proc), registry);
       return registry.get(proc) || null;

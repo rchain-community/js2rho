@@ -1,9 +1,8 @@
-// UNTESTED sketch
 // import { E } from "@agoric/eventual-send";
-// import REVAddress from "rho:rchain:REVAddress";
 import { Channel } from "./lib/rspace.js";
 import { Ok, Err, maybe, unwrap } from "./lib/result.js";
 import * as _registry from "./lib/registry.js";
+// import REVAddress from "rho:rchain:REVAddress";
 import { RevAddress, Nat } from "./lib/rev.js";
 const { freeze: harden } = Object; // TODO? @agoric/harden
 
@@ -36,8 +35,9 @@ export default async function main({ registry }) {
    */
   const RevVault = await registry.lookup(`rho:rchain:revVault`);
 
-  /** @type {() => Promise<{ timestamp: Timestamp }> } */
-  const blockInfo = await registry.lookup("rho:rchain:blockInfo");
+  // ISSUE: actually it returns 3 separate processes. hm.
+  /** @type {() => Promise<[number, Timestamp, string]> } */
+  const blockData = await registry.lookup(`rho:block:data`);
 
   /**
    * @typedef {{
@@ -91,6 +91,9 @@ export default async function main({ registry }) {
      * // TODO: how reliable is block timestamp?
      *
      * TODO: parameterize issuer, esp for testing.
+     * TODO: add minimum pledge threshold to guard against
+     *       having to spend more to withdraw pledges
+     *       than they are worth. (CRITICAL SECURITY ISSUE)
      */
     async make(target, deadline) {
       // TODO: rename to pledges
@@ -122,10 +125,9 @@ export default async function main({ registry }) {
         /**
          * @param {boolean} met sense of the test
          * @returns {Promise<Result<Timestamp>>} current time
-         * // TODO: gather details on blockinfo
          */
         async deadline(met) {
-          const { timestamp: now } = await blockInfo();
+          const [_num, now, _sender] = await blockData();
           return maybe(async () => {
             if (now >= deadline === met) {
               return now;
@@ -220,7 +222,6 @@ export default async function main({ registry }) {
             case false:
               return amt; // transfer failed
             case true: {
-              // TODO: check that the amount is > 0? worth a transaction fee?
               const contributorSeat = ContributorSeat.make(pledge);
               const { balance, pledges } = await holdingsCh.get();
               const pbal = await pledge.getBalance();
