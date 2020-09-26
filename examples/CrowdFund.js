@@ -1,4 +1,9 @@
 // @ts-check
+
+// walkthru 2020-09-25 rchain CrowdFund.rho
+// DivvyDAO: Colab, RChain, DigLife
+// https://www.youtube.com/watch?v=pI_IXi75iB4
+
 // import { E } from "@agoric/eventual-send";
 import { Channel } from "./lib/rspace.js";
 import { Ok, escape, expect, doubt } from "./lib/result.js";
