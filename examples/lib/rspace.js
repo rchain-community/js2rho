@@ -97,6 +97,7 @@ export function Channel(proc) {
     q.push(proc);
   } else {
     const me = id;
+    // @ts-ignore
     proc = harden({
       toByteArray() {
         return Buffer.from([1, 2, 3, me]);
