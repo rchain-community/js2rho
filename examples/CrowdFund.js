@@ -18,6 +18,7 @@ const { freeze: harden } = Object; // TODO? @agoric/harden
  * @typedef { import('./lib/result').Problem} Problem
  * @typedef { import('./lib/result').Ejector} Ejector
  * @typedef { import('./lib/rev').REVAddress} REVAddress
+ * @typedef { import('./lib/rev').Vault} Vault
  */
 /**
  * @typedef { import('./lib/result').Result<T>} Result<T>
@@ -52,6 +53,10 @@ export default async function main({ registry }) {
   const REVIssuer = harden({
     /** @type { () => Promise<Purse> } */
     async makeEmptyPurse() {
+      return REVIssuer.makeVaultPurse(RevVault.findOrCreate);
+    },
+    /** @type { (f: typeof RevVault.findOrCreate) => Promise<Purse> } */
+    async makeVaultPurse(findOrCreate) {
       /** @type { REVAddress } */
       let myAddr;
 
@@ -61,12 +66,17 @@ export default async function main({ registry }) {
           const pmtAuthKey = await RevVault.unforgeableAuthKey(allegedPayment);
           // @ts-ignore
           const amount = await allegedPayment.getBalance();
-          Nat(amount);
           // @ts-ignore
-          // could do these next 2 in parallel with Promise.all
           const pmtAddr = await allegedPayment.getAddress();
-          const result = await myVault.transfer(pmtAddr, amount, pmtAuthKey);
-          return result;
+          return escape(async (/** @type { Ejector } */ ej) => {
+            const pmtVault = expect(ej, await RevVault.findOrCreate(pmtAddr));
+            Nat(amount);
+            // @ts-ignore
+            return expect(
+              ej,
+              await pmtVault.transfer(myAddr, amount, pmtAuthKey)
+            );
+          });
         },
         async getAddress() {
           return myAddr;
@@ -76,14 +86,14 @@ export default async function main({ registry }) {
         },
       });
       myAddr = await RevAddress.fromUnforgeable(self);
-      const found = await RevVault.findOrCreate(myAddr);
+      const found = await findOrCreate(myAddr);
       if (!found.ok) {
         throw new TypeError(
           "huh? how could findOrCreate fail on unf rev addr?"
         );
       }
       const myVault = found.result;
-      return self;
+      return harden(self);
     },
   });
 
@@ -198,22 +208,18 @@ export default async function main({ registry }) {
          */
         async contribute(pmt) {
           const pledge = await REVIssuer.makeEmptyPurse();
-          const amt = await pledge.deposit(pmt);
-          switch (amt.ok) {
-            case false:
-              return amt; // transfer failed
-            case true: {
-              const contributorSeat = await ContributorSeat.make(pledge);
-              const { balance, pledges } = await holdingsCh.get();
-              const pbal = await pledge.getBalance();
-              holdingsCh.put({
-                // TODO: refund in case of overflow?
-                balance: Nat(balance + pbal),
-                pledges: [...pledges, pledge],
-              });
-              return Ok(contributorSeat);
-            }
-          }
+          return escape(async (/** @type {Ejector} */ ej) => {
+            const amt = expect(ej, await pledge.deposit(pmt));
+            const contributorSeat = await ContributorSeat.make(pledge);
+            const { balance, pledges } = await holdingsCh.get();
+            const pbal = await pledge.getBalance();
+            holdingsCh.put({
+              // TODO: refund in case of overflow?
+              balance: Nat(balance + pbal),
+              pledges: [...pledges, pledge],
+            });
+            return contributorSeat;
+          });
         },
       });
       return harden({ beneficiarySeat, publicFacet });
@@ -252,21 +258,40 @@ export default async function main({ registry }) {
           break;
       }
     }
+
+    let ix = 123;
+    /** @type {(amount: NatT) => Promise<Purse>} */
+    async function _faucet(amount) {
+      return REVIssuer.makeVaultPurse((addr) => RevVault._faucet(addr, amount));
+    }
     return escape(async (/* @type { Ejector } */ ej) => {
-      console.log();
       await tc("claim early", false, beneficiarySeat.claim());
 
-      const bobPurse = await REVIssuer.makeEmptyPurse();
-      console.log("contribute");
-      const bobSeat = expect(ej, await publicFacet.contribute(bobPurse));
+      console.log("alice contributes 60K");
+      const alicePurse = await _faucet(60 * 1000 * REV);
+      const aliceSeat = expect(ej, await publicFacet.contribute(alicePurse));
+      await tc("claim too early", false, beneficiarySeat.claim());
 
+      console.log("Bob contributes 30K");
+      const bobPurse = await _faucet(30 * 1000 * REV);
+      const bobSeat = expect(ej, await publicFacet.contribute(bobPurse));
+      await tc("claim too early", false, beneficiarySeat.claim());
+
+      console.log("Charlie contributes 50K");
+      const charliePurse = await _faucet(50 * 1000 * REV);
+      expect(ej, await publicFacet.contribute(charliePurse));
+
+      console.log("15 days pass");
       _registry.setCurrentBlock({
         blockNumber: 123,
         timestamp: now + 15 * DAY,
       });
 
-      await tc("withdraw", true, bobSeat.withdraw());
-      await tc("claim", false, beneficiarySeat.claim());
+      await tc("bob can't withdraw", false, bobSeat.withdraw());
+      const { benefit } = expect(ej, await beneficiarySeat.claim());
+      console.log("benefit", await benefit.getBalance());
+      await tc("claim", true, Promise.resolve(Ok(benefit)));
+      await tc("claim again?", false, beneficiarySeat.claim());
     });
   }
 
