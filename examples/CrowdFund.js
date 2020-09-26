@@ -1,9 +1,11 @@
+// @ts-check
 // import { E } from "@agoric/eventual-send";
 import { Channel } from "./lib/rspace.js";
-import { Ok, Err, maybe, unwrap } from "./lib/result.js";
+import { Ok, maybe, unwrap } from "./lib/result.js";
 import * as _registry from "./lib/registry.js";
 // import REVAddress from "rho:rchain:REVAddress";
 import { RevAddress, Nat } from "./lib/rev.js";
+
 const { freeze: harden } = Object; // TODO? @agoric/harden
 
 /**
@@ -25,7 +27,6 @@ const { freeze: harden } = Object; // TODO? @agoric/harden
  */
 
 export default async function main({ registry }) {
-  console.log("break!!!");
   /**
    * @type { import('./lib/list-ops').ListOpsT}
    */
@@ -42,7 +43,7 @@ export default async function main({ registry }) {
   /**
    * @typedef {{
    *   deposit: (allegedPayment: unknown) => Promise<Result<unknown>>,
-   *   getBalance: () => Promise<Nat>,
+   *   getBalance: () => Promise<NatT>,
    *   getAddress: () => Promise<string>,
    * }} Purse
    */
@@ -51,7 +52,6 @@ export default async function main({ registry }) {
     async makeEmptyPurse() {
       /** @type { REVAddress } */
       let myAddr;
-      // could do these next 2 in parallel with Promise.all
 
       const self = harden({
         /** @type { (pmt: unknown) => Promise<Result<unknown>> } */
@@ -60,6 +60,7 @@ export default async function main({ registry }) {
           const amount = await pmt.getBalance();
           Nat(amount);
           // @ts-ignore
+          // could do these next 2 in parallel with Promise.all
           const pmtAddr = await pmt.getAddress();
           const pmtAuthKey = await RevVault.unforgeableAuthKey(pmt);
           const result = await myVault.transfer(pmtAddr, amount, pmtAuthKey);
@@ -86,7 +87,7 @@ export default async function main({ registry }) {
 
   const CrowdFund = harden({
     /**
-     * @param {Nat} target pledge target in 10^-8 REV
+     * @param {NatT} target pledge target in 10^-8 REV
      * @param {Timestamp} deadline compared to block timestamp
      * // TODO: how reliable is block timestamp?
      *
@@ -98,7 +99,7 @@ export default async function main({ registry }) {
     async make(target, deadline) {
       // TODO: rename to pledges
       /**
-       * @typedef {{balance: Nat, pledges: Purse[]}} Holdings
+       * @typedef {{balance: NatT, pledges: Purse[]}} Holdings
        */
       /** @type { ChannelT<Holdings>} */
       const holdingsCh = Channel({ balance: 0, pledges: [] });
@@ -106,7 +107,7 @@ export default async function main({ registry }) {
       const check = harden({
         /**
          * @param {boolean} met sense of the test
-         * @returns {Promise<Result<Nat>>} current pledges
+         * @returns {Promise<Result<NatT>>} current pledges
          */
         async pledgeTarget(met) {
           const { balance: pledges } = await holdingsCh.peek();
@@ -203,7 +204,7 @@ export default async function main({ registry }) {
 
       const publicFacet = harden({
         /**
-         * @returns { Promise<{terms: {target: Nat, deadline: Timestamp}, pledges: Nat}> }
+         * @returns { Promise<{terms: {target: NatT, deadline: Timestamp}, pledges: NatT}> }
          */
         async status() {
           const { balance: pledges } = await holdingsCh.peek();

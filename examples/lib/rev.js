@@ -1,3 +1,4 @@
+// @ts-check
 import { Ok } from "./result.js";
 
 /**
@@ -31,15 +32,14 @@ export function Nat(amt) {
 
 /**
  * @typedef {{
- *   getBalance: () => Promise<Nat>,
- *   transfer: (dest: REVAddress, amount: Nat, key: unknown) => Promise<Result<unknown>>
+ *   getBalance: () => Promise<NatT>,
+ *   transfer: (dest: REVAddress, amount: NatT, key: unknown) => Promise<Result<unknown>>
  * }} Vault
  *
  * @typedef {{
  *   toString: () => string
  * }} ToString
  *
- * @typedef { number } Nat
  * @typedef { string } REVAddress
  */
 export const RevVault = (() => {
@@ -58,11 +58,11 @@ export const RevVault = (() => {
       let balance = 0;
       const newVault = harden({
         toString: () => `<rev vault @${addr}>`,
-        /** @type { () => Promise<Nat> } */
+        /** @type { () => Promise<NatT> } */
         async getBalance() {
           return balance;
         },
-        /** @type { (dest: REVAddress, amount: Nat, key: unknown) => Promise<Result<unknown>> } */
+        /** @type { (dest: REVAddress, amount: NatT, key: unknown) => Promise<Result<unknown>> } */
         async transfer(dest, amount, key) {
           const newBalance = Nat(balance - amount);
           balance = newBalance;
