@@ -23,6 +23,12 @@ async function blockData() {
   return [blockNumber, timestamp, sender];
 }
 
+// WARNING: testing only!
+export function setCurrentBlock({ blockNumber: num, timestamp: t }) {
+  blockNumber = num;
+  timestamp = t;
+}
+
 /**
  * @param {URI} proc
  * @typedef { string } URI

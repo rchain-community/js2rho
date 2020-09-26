@@ -220,11 +220,14 @@ export default async function main({ registry }) {
     },
   });
 
+  const REV = 10 ** 8;
+  const DAY = 24 * 60 * 60 * 1000;
+
   /** @type { (now: Timestamp) => Promise<unknown> } */
   async function test(now) {
-    console.log("testing");
-    const REV = 10 ** 8;
-    const DAY = 24 * 60 * 60 * 1000;
+    console.log("testing", new Date(now));
+    _registry.setCurrentBlock({ blockNumber: 123, timestamp: now });
+
     const { beneficiarySeat, publicFacet } = await CrowdFund.make(
       100000 * REV,
       now + 14 * DAY
@@ -256,13 +259,18 @@ export default async function main({ registry }) {
       const bobPurse = await REVIssuer.makeEmptyPurse();
       console.log("contribute");
       const bobSeat = expect(ej, await publicFacet.contribute(bobPurse));
-      console.log();
-      await tc("withdraw", false, bobSeat.withdraw());
+
+      _registry.setCurrentBlock({
+        blockNumber: 123,
+        timestamp: now + 15 * DAY,
+      });
+
+      await tc("withdraw", true, bobSeat.withdraw());
       await tc("claim", false, beneficiarySeat.claim());
     });
   }
 
-  console.log(await test(Date.now()));
+  console.log(await test((2020 - 1970) * 365.25 * DAY));
 
   console.log("tests passed! inserting into registry");
   // TODO: run tests; insert only if they pass
