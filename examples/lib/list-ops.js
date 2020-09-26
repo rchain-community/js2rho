@@ -16,7 +16,12 @@ const { freeze: harden } = Object; // TODO? @agoric/harden
  * @template U
  */
 async function mapCollect(items, f) {
-  throw { message: "not impl" };
+  const ea = await Promise.all(items.map(f));
+  // @ts-ignore
+  const results = ea.filter((r) => r.ok).map((r) => r.result);
+  // @ts-ignore
+  const problems = ea.filter((r) => !r.ok).map((r) => r.problem);
+  return { results, problems };
 }
 
 /**
