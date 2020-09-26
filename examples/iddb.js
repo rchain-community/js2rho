@@ -1,6 +1,5 @@
 // IdDB - DB with id primary key column in all tables
-// TODO: @agoric/harden
-import { harden } from "./lib/rspace.js";
+const { freeze: harden } = Object; // TODO: @agoric/harden
 // TODO: @rchain-community/js2rho
 import { tuple, Channel, RhoMap, RhoSet, quote, deref } from "./lib/rspace.js";
 
@@ -12,17 +11,17 @@ import { insertArbitrary } from "./lib/registry.js";
 
 const IdDB = harden({
   make() {
-    const tablesCh = Channel();
-    tablesCh(RhoMap()); // table_name -> channel with Set of keys
+    const tablesCh = Channel(undefined);
+    tablesCh.put(RhoMap()); // table_name -> channel with Set of keys
     const self = harden({
       // rows are stored at @{[self, table_name, key]}
       // TODO: consider TreeHashMap, since set of keys could get large
       create_table(table_name /*: String*/) {
         // TODO: fail if table_name already present
         return tablesCh.get().then((tables) => {
-          const keysCh = Channel();
-          keysCh(RhoSet());
-          tablesCh(tables.set(table_name, keysCh));
+          const keysCh = Channel(undefined);
+          keysCh.put(RhoSet());
+          tablesCh.put(tables.set(table_name, keysCh));
           console.log({ created: table_name, with: tables });
           return null;
         });
@@ -131,7 +130,7 @@ export default async function main() {
   // register IdDB constructor contract
   const uri = await insertArbitrary(IdDB);
   console.log({ "IdDB URI": uri });
-  deployId(uri);
+  deployId.put(uri);
 
   // testing
   const assert = (ok) => {
