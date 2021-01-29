@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "dependencies": {
-    "@agoric/harden": "0.0.8",
+    "@agoric/harden": "0.2.0",
     "esprima": "^4.0.0"
   },
   "devDependencies": {
