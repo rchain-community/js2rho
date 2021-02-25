@@ -12,8 +12,7 @@ import scala.util.parsing.combinator.syntactical.StandardTokenParsers
 // ISSUE: use JavaTokenParsers instead?
 class JSONTokens extends RegexParsers {
   override def skipWhitespace = true
-  // TODO: finish multi-line commentr regex
-  override val whiteSpace: Regex = "(\\s*//[^\\n]*\\n\\s*)+|\\s*/\\*[^*]*\\*/|(\\s+)".r
+  override val whiteSpace: Regex = "(\\s*//[^\\n]*\\n\\s*)+\\s*|\\s*/\\*([^*]|\\*[^*])*\\*/\\s*|(\\s+)".r
   def NUMBER: Parser[Double] = raw"-?\d+(?:\.\d+)?(?:[eE]-?\d+)?".r ^^ { n =>
     n.toDouble
   }
@@ -44,14 +43,17 @@ class JSONParser extends JSONTokens {
       | STRING ^^ StrLit
   )
 
-  def array = "[" ~> repsep(element, ",") <~! "]" ^^ { args => ArrayExpr(args: _*) }
+  def repsepx[T](p: => Parser[T], sep: => Parser[Any]): Parser[List[T]] = repsep(p, sep) <~ opt(sep)
+  def rep1sepx[T](p: => Parser[T], sep: => Parser[Any]): Parser[List[T]] = rep1sep(p, sep) <~ opt(sep)
+
+  def array = "[" ~> repsepx(element, ",") <~! "]" ^^ { args => ArrayExpr(args: _*) }
 
   // to be extended
   def element: Parser[Expression] = assignExpr
 
   // The JavaScript and JSON grammars calls records "objects"
   def record: Parser[Expression] =
-    "{" ~> repsep(propDef, ",") <~! "}" ^^ { ps => ObjectExpr(ps: _*) }
+    "{" ~> repsepx(propDef, ",") <~! "}" ^^ { ps => ObjectExpr(ps: _*) }
 
   // to be extended
   def propDef: Parser[Property] = (propName <~ ":") ~ assignExpr ^^ { case k ~ e => Prop(k, e) }
@@ -64,10 +66,10 @@ class JSONParser extends JSONTokens {
 }
 
 object QuasiParser {
-  val all_pat = "`[^`$$]*`".r // TODO: ~"\${"
-  val head_pat = "`[^$]*\\$\\{".r
-  val mid_pat = "}[^$]*\\$\\{".r
-  val tail_pat = "}[^$]*`".r
+  val all_pat = "`[^`$]*`".r // TODO: ~"\${"
+  val head_pat = "`[^`$]*\\$\\{".r
+  val mid_pat = "\\}[^`$]*\\$\\{".r
+  val tail_pat = "\\}[^`$]*`".r
 }
 
 class JustinParser extends JSONParser {
@@ -90,47 +92,47 @@ class JustinParser extends JSONParser {
   // though ES2017 considers them in IDENT.
   def RESERVED_WORD: Parser[String] = (
     KEYWORD | RESERVED_KEYWORD | FUTURE_RESERVED_WORD
-      | "null" | "false" | "true"
-      | "async" | "arguments" | "eval"
+      | "null\\b".r | "false\\b".r | "true\\b".r
+      | "async\\b".r | "arguments\\b".r | "eval\\b".r
   )
 
   def KEYWORD: Parser[String] = (
-    "break"
-      | "case" | "catch" | "const" | "continue"
-      | "debugger" | "default"
-      | "else" | raw"export\b".r
-      | "finally" | "for" | "function"
-      | "if" | "import"
-      | "return"
-      | "switch"
-      | "throw" | "try" | "typeof"
-      | "void"
-      | "while"
+    "break\\b".r
+      | "case\\b".r | "catch\\b".r| "const\\b".r| "continue\\b".r
+      | "debugger\\b".r| "default\\b".r
+      | "else\\b".r| raw"export\b".r
+      | "finally\\b".r| "for\\b".r| "function\\b".r
+      | "if\\b".r| "import\\b".r
+      | "return\\b".r
+      | "switch\\b".r
+      | "throw\\b".r| "try\\b".r| "typeof\\b".r
+      | "void\\b".r
+      | "while\\b".r
 
-      | "const" // ISSUE: added
+      | "const\\b".r// ISSUE: added
   )
 
   // Unused by TinySES but enumerated here, in order to omit them
   // from the IDENT token.
   def RESERVED_KEYWORD: Parser[String] = (
     "class"
-      | "delete" | "do"
-      | "extends"
-      | raw"in\b".r | "instanceof" // TODO: keyword boundaries
-      | "new"
-      | "super"
-      | "this"
-      | "var"
-      | "with"
-      | "yield"
+      | "delete\\b".r| "do\\b".r
+      | "extends\\b".r
+      | "in\\b".r | "instanceof\\b".r
+      | "new\\b".r
+      | "super\\b".r
+      | "this\\b".r
+      | "var\\b".r
+      | "with\\b".r
+      | "yield\\b".r
 
-      | "let" // ISSUE: added
+      | "let\\b".r// ISSUE: added
   )
 
   def FUTURE_RESERVED_WORD: Parser[String] = (
-    "await" | "enum"
-      | "implements" | "package" | "protected"
-      | "interface" | "private" | "public"
+    "await\\b".r| "enum"
+      | "implements\\b".r| "package\\b".r| "protected"
+      | "interface\\b".r| "private\\b".r| "public"
   )
 
   def QUASI_ALL: Parser[String] = QuasiParser.all_pat ^^ {
@@ -152,7 +154,7 @@ class JustinParser extends JSONParser {
     case s ~ e => Seq(Left(s), Right(e))
   } ++ Seq(Left(t))
 
-  def undefined = "undefined" ^^^ Undefined
+  def undefined = "undefined\\b".r^^^ Undefined
 
   override def dataStructure = undefined | super.dataStructure;
 
@@ -173,7 +175,7 @@ class JustinParser extends JSONParser {
   override def element = super.element | "..." ~> assignExpr ^^ SpreadExpr
 
   override def propDef = (super.propDef
-    | useVar ^^ { case Use(id) => Prop(PropKey(id), Use(id)) }
+    | useVar ^? { case Use(id) => Prop(PropKey(id), Use(id)) }
     | ("..." ~> assignExpr) ^^ SpreadObj)
 
   // No computed property name
@@ -203,7 +205,10 @@ class JustinParser extends JSONParser {
   // and newExpr. Instead, in Justin, callExpr jumps directly to
   // primaryExpr and updateExpr jumps directly to callExpr.
 
-  def callExpr = primaryExpr ~ (callPostOp *) ^^ { binary }
+  def callExpr = (
+    ("new\\b".r| "super\\b".r) ~> err("no new/super in Jessie") |
+    primaryExpr ~ (callPostOp *) ^^ { binary }
+  )
 
   // Restrict index access to number-names, including
   // floating point, NaN, Infinity, and -Infinity.
@@ -212,7 +217,7 @@ class JustinParser extends JSONParser {
       | "+" ~> unaryExpr ^^ { e => Unary(Positive, e) }
   )
 
-  def args: Parser[Expression => Expression] = "(" ~> repsep(arg, ",") <~! ")" ^^ {
+  def args: Parser[Expression => Expression] = "(" ~> repsepx(arg, ",") <~! ")" ^^ {
     es => e: Expression => Call(e, es)
   }
 
@@ -231,8 +236,8 @@ class JustinParser extends JSONParser {
   // No "delete".
   def op1(op: UnOp)(tok: String)(e: Expression) = Unary(op, e)
   def preOp: Parser[Expression => Expression] = (
-    "void" ^^ { op1(Void) }
-      | "typeof" ^^ { op1(TypeOf) }
+    "void\\b".r^^ { op1(Void) }
+      | "typeof\\b".r^^ { op1(TypeOf) }
       | prePre
   )
   def prePre: Parser[Expression => Expression] = (
@@ -309,10 +314,10 @@ class JessieParser extends JustinParser {
   // We distinguish b~.foo(x) from calling b~.foo by a post-parsing pass
   override def callPostOp = (
     super.callPostOp
-    | "(" ~> repsep(arg, ",") <~! ")" ^^ { args => e: Expression =>
+    | "(" ~> repsepx(arg, ",") <~! ")" ^^ { args => e: Expression =>
         Call(e, args)
       }
-      | later ~> "(" ~> repsep(arg, ",") <~! ")" ^^ { args => e: Expression =>
+      | later ~> "(" ~> repsepx(arg, ",") <~! ")" ^^ { args => e: Expression =>
         CallLater(e, args)
       }
   )
@@ -361,8 +366,8 @@ class JessieParser extends JustinParser {
     log(
       positioned(
         block
+          | "if\\b".r~> ("(" ~> expr <~ ")") ~ block ~ opt("else\\b".r ~> block) ^^ { case c ~ t ~ e => If(c, t, e) }
         /** TODO
-      | "if" ~> ("(" ~> expr <~ ")") ~ block ~ ("else" ~> block)? ^^ { case c ~ t ~ e => If(c, t, e) }
       | "for" ~> "(" ~> declaration ~> expr? ~ (";" ~> expr?) ~ ")" ~ block    ^^ { case d ~ c ~ i ~ b => For(d, c, i, b) }
       | "for" ~> "(" ~> declOp ~ binding ~ ("of" ~> expr <~ ")") ~ block       ^^ { case d ~ e ~ b => ForOf(d, e, b) }
       | "while" ~> ("(" ~> expr <~ ")") ~ block               ^^ { case c ~ b => While(c, b) }
@@ -378,17 +383,15 @@ class JessieParser extends JustinParser {
       )
     )("statement")
 
-  // TODO: def arm = block
-  // TODO: elseArm
   // TODO: breakableStatement
 
   // Each case branch must end in a terminating statement.
   def terminator: Parser[Statement] = (
-    "continue" ~> ((NO_NEWLINE ~> IDENT) ?) <~! ";" ^^ { Continue(_) }
+    "continue\\b".r~> ((NO_NEWLINE ~> IDENT) ?) <~! ";" ^^ { Continue(_) }
       // TODO: continue ident, break ident
-      | "break" ~> ((NO_NEWLINE ~> IDENT) ?) <~! ";" ^^ { Break(_) }
-      | "return" ~> ((NO_NEWLINE ~> expr) ?) <~! ";" ^^ { Return(_) }
-      | "throw" ~> expr <~! ";" ^^ { Throw(_) }
+      | "break\\b".r~> ((NO_NEWLINE ~> IDENT) ?) <~! ";" ^^ { Break(_) }
+      | "return\\b".r~> ((NO_NEWLINE ~> expr) ?) <~! ";" ^^ { Return(_) }
+      | "throw\\b".r~> expr <~! ";" ^^ { Throw(_) }
   )
 
   def block: Parser[Block] = log("{" ~> body <~ "}")("block") ^^ { Block(_) }
@@ -404,12 +407,13 @@ class JessieParser extends JustinParser {
   // No generator, async, or async iterator function.
   def declaration: Parser[Declaration] =
     log(
-      declOp ~ repsep(binding, ",") <~! ";" ^^ { case op ~ decls => op(decls) }
+      "class\\b".r ~> err("no class")
+        | declOp ~ rep1sep(binding, ",") <~! ";" ^^ { case op ~ decls => op(decls) }
         | functionDecl
     )("declaration")
   def declOp: Parser[Bindings => Declaration] = (
-    "const" ^^^ { Const }
-      | "let" ^^^ { Let }
+    "const\\b".r^^^ { Const }
+      | "let\\b".r^^^ { Let }
   )
 
   // TODO: forOfBinding
@@ -422,8 +426,8 @@ class JessieParser extends JustinParser {
 
   def bindingPattern: Parser[Pattern] =
     positioned(
-      "[" ~> repsep(elementParam, ",") <~ "]" ^^ { MatchArray(_: _*) }
-        | "{" ~> repsep(propParam, ",") <~ "}" ^^ { MatchObj(_: _*) }
+      "[" ~> repsepx(elementParam, ",") <~ "]" ^^ { MatchArray(_: _*) }
+        | "{" ~> repsepx(propParam, ",") <~ "}" ^^ { MatchObj(_: _*) }
     )
 
   def pattern: Parser[Pattern] =
@@ -431,7 +435,7 @@ class JessieParser extends JustinParser {
       positioned(
         bindingPattern
           | defVar
-          | "undefined" ^^^ MatchUndefined
+          | "undefined\\b".r^^^ MatchUndefined
           | dataLiteral ^^ MatchData
         // TODO: | HOLE                                  ^^ { _ => PatternHole }
       )
@@ -456,22 +460,23 @@ class JessieParser extends JustinParser {
 
 
   /** TODO
-  def catcher = "catch" ~> ("(" ~> pattern <~ ")") ~ block   ^^ { case p ~ b => Catch(p, b) }
-  def finalizer = "finally" ~> block                         ^^ { Finally(_) }
+  def catcher = "catch\\b".r~> ("(" ~> pattern <~ ")") ~ block   ^^ { case p ~ b => Catch(p, b) }
+  def finalizer = "finally\\b".r~> block                         ^^ { Finally(_) }
   def branch = caseLabel+ ~ ("{" ~> body ~ terminator ~ "}") ^^ { case cs ~ b ~ t =>
     Branch(cs, b ++ List(t)) }
   def caseLabel = (
-  "case" ~> expr <~ ":"                                  ^^ { Case(_) }
-    | "default" ~ ":"                                    ^^ { Default(_) }
+  "case\\b".r~> expr <~ ":"                                  ^^ { Case(_) }
+    | "default\\b".r~ ":"                                    ^^ { Default(_) }
   )
     **/
+
   def functionExpr: Parser[Expression] =
-    "function" ~> (defVar ?) ~ ("(" ~> repsep(param, ",") <~! ")") ~ block ^^ {
+    "function\\b".r~> (defVar ?) ~ ("(" ~> repsepx(param, ",") <~! ")") ~ block ^^ {
       case n ~ p ~ b => FunctionExpr(n, p, b)
     }
 
   def functionDecl: Parser[Declaration] =
-    "function" ~> defVar ~ ("(" ~> repsep(param, ",") <~! ")") ~ block ^^ {
+    "function\\b".r~> defVar ~ ("(" ~> repsepx(param, ",") <~! ")") ~ block ^^ {
       case n ~ p ~ b => FunctionDecl(n, p, b)
     }
 
@@ -485,45 +490,51 @@ class JessieParser extends JustinParser {
   )
   def arrowParams: Parser[List[Pattern]] = (
     IDENT ^^ { case i => List(Def(i)) }
-      | ("(" ~> repsep(param, ",") <~ ")")
+      | ("(" ~> repsepx(param, ",") <~ ")")
   )
   def methodDef: Parser[Property] = (
-    propName ~ ("(" ~> repsep(param, ",") <~! ")") ~ block ^^ {
+    propName ~ ("(" ~> repsepx(param, ",") <~! ")") ~ block ^^ {
       case n ~ p ~ b => MethodDef(n, p, b)
     }
-      | "get" ~> (propName <~ "(" <~! ")") ~ block ^^ {
+      | "get\\b".r~> (propName <~ "(" <~! ")") ~ block ^^ {
         case n ~ b => Getter(n, List(), b)
       }
-      | "set" ~> propName ~ ("(" ~> param <~! ")") ~ block ^^ {
+      | "set\\b".r~> propName ~ ("(" ~> param <~! ")") ~ block ^^ {
         case n ~ p ~ b => Setter(n, List(p), b)
       }
   )
 
   def moduleBody: Parser[Program] =
-    rep(statement ^^ { s =>
-      Left(s)
-    } | moduleItem ^^ { m => Right(m) }) ^^ { case items => Program(items) }
+    rep(
+      moduleItem ^^ { m => Right(m) }
+      // ISSUE: "Jessie modules only allow hardened module-level bindings." -- quasi-jessie.js.ts
+        // | statement ^^ { s => Left(s) }
+    ) ^^ { case items => Program(items) }
   def moduleItem: Parser[ModuleDeclaration] =
     // SEMI -> SKIP
     log(importDecl | exportDecl | moduleDeclaration)("moduleItem")
 
   def moduleDeclaration: Parser[ModuleDeclaration] =
     (
-      "const" ~> repsep(moduleBinding, ",") <~ ";"
+      "const\\b".r~> repsepx(moduleBinding, ",") <~! ";"
     ) ^^ { case decls => Const(decls) }
 
   def moduleBinding: Parser[(Pattern, Expression)] = (
     (bindingPattern <~ "=") ~ expr ^^ { case p ~ e => (p, e) }
       | (defVar <~ "=") ~ expr ^^ { case p ~ e     => (p, e) }
-      | defVar ^^ { case Def(id)                           => (Def(id), Use(id)) }
+      | defVar ^? { case Def(id) => (Def(id), Use(id)) }
   )
 
   def useImport: Parser[Expression] = IDENT ^^ { case i => Use(i) }
 
-  def importDecl: Parser[ImportDeclaration] =
-    ("import" ~> importClause) ~ ("from" ~> (STRING ^^ StrLit)) <~ ";" ^^ {
+  def importDecl: Parser[ImportDeclaration] = "import\\b".r~> (
+    (importClause) ~ ("from\\b".r~> (STRING ^^ StrLit)) <~! ";" ^^ {
       case specifiers ~ source => ImportDeclaration(specifiers, source)
     }
+      | (STRING ^^ StrLit) <~! ";" ^^ {
+        case source => ImportDeclaration(List(), source)
+      }
+  )
   def importClause: Parser[List[ModuleSpecifier]] = (
     // STAR
     namedImports
@@ -531,7 +542,7 @@ class JessieParser extends JustinParser {
     // TODO ...
   )
   def namedImports: Parser[List[ModuleSpecifier]] =
-    "{" ~> repsep(importSpecifier, ",") <~ opt(",") <~ "}"
+    "{" ~> repsepx(importSpecifier, ",") <~ "}"
   def importSpecifier: Parser[ModuleSpecifier] =
     (IDENT ~ ("as" ~> defImport) ^^ {
       case i ~ ImportSpecifier(l, _) => ImportSpecifier(l, Identifier(i))
@@ -542,10 +553,11 @@ class JessieParser extends JustinParser {
   }
 
   def exportDecl: Parser[ModuleDeclaration] = (
-    ("export" ~> "default" ~> exportableExpr <~ ";") ^^ {
+    ("export\\b".r ~> "default\\b".r ~> exportableExpr <~! ";") ^^ {
       case e => ExportDefaultDeclaration(e)
     }
-      | "export" ~> moduleDeclaration
+      | "export\\b".r ~> ("{" ~> repsepx(IDENT, ",") <~ "}") <~ ";" ^^ ExportList
+      | "export\\b".r ~> moduleDeclaration
   )
   def exportableExpr = expr
 }

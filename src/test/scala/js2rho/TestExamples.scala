@@ -35,6 +35,21 @@ class WalnutPatternsTest extends FlatSpec {
     }
   }
 
+  "issuer.js" should "parse" in {
+    parse(getClass.getResource("/examples/issuer.js")) match {
+      case jp.Success(ast, _) => ast
+      case jp.Failure(msg,_)  => {
+        println("FAILURE: " + msg)
+        assert(false);
+      }
+      case jp.Error(msg,_)    => {
+        println("ERROR: " + msg)
+        assert(false);
+      }
+      case _                  => assert(false)
+    }
+  }
+
   "quasi regex" should "be right" in {
     assert("`abc`".matches(QuasiParser.all_pat.regex))
     assert("`abc${".matches(QuasiParser.head_pat.regex))

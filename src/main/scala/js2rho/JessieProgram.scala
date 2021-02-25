@@ -90,6 +90,7 @@ case class MatchObj(ps: PropParam*) extends Pattern
 sealed trait Statement extends Positional
 case class ExprStmt(e: Expression) extends Statement
 case class Block(body: List[Either[Statement, Declaration]]) extends Statement
+case class If(c: Expression, t: Block, e: Option[Block]) extends Statement
 case class Return(e: Option[Expression]) extends Statement
 case class Break(e: Option[String]) extends Statement
 case class Continue(e: Option[String]) extends Statement
@@ -102,6 +103,8 @@ case class FunctionDecl(n: Pattern, p: List[Pattern], b: Block)
 
 sealed trait ModuleDeclaration extends Declaration
 case class Const(bindings: List[(Pattern, Expression)])
+    extends ModuleDeclaration
+case class ExportList(names: List[String])
     extends ModuleDeclaration
 sealed trait ModuleSpecifier extends Positional
 case class ImportDeclaration(specifiers: List[ModuleSpecifier], source: StrLit)
