@@ -9,8 +9,8 @@ import { Channel } from "./lib/rspace.js";
 import { Ok, escape, expect, doubt } from "./lib/result.js";
 import * as _registry from "./lib/registry.js";
 // import REVAddress from "rho:rchain:REVAddress";
-import { RevAddress, Nat } from "./lib/rev.js";
-import { parse } from "path";
+import { Nat } from "./lib/rev.js";
+import { REVIssuer } from "./RevIssuer";
 
 const { freeze: harden } = Object; // TODO? @agoric/harden
 
@@ -19,11 +19,13 @@ const { freeze: harden } = Object; // TODO? @agoric/harden
  * @typedef { number } NatT
  *
  * @typedef { number } Timestamp
- *
+ */
+/**
+ * @typedef { import('./RevIssuer').Purse} Purse
+ */
+/**
  * @typedef { import('./lib/result').Problem} Problem
  * @typedef { import('./lib/result').Ejector} Ejector
- * @typedef { import('./lib/rev').REVAddress} REVAddress
- * @typedef { import('./lib/rev').Vault} Vault
  */
 /**
  * @typedef { import('./lib/result').Result<T>} Result<T>
@@ -43,64 +45,11 @@ export default async function main({ registry }) {
    * @type { typeof import('./lib/rev').RevVault }
    */
   const RevVault = await registry.lookup(`rho:rchain:revVault`);
+  const revIssuer = await REVIssuer.make(RevVault);
 
   // ISSUE: actually it returns 3 separate processes. hm.
   /** @type {() => Promise<[number, Timestamp, string]> } */
   const blockData = await registry.lookup(`rho:block:data`);
-
-  /**
-   * @typedef {{
-   *   deposit: (allegedPayment: unknown) => Promise<Result<unknown>>,
-   *   getBalance: () => Promise<NatT>,
-   *   getAddress: () => Promise<string>,
-   * }} Purse
-   */
-  const REVIssuer = harden({
-    /** @type { () => Promise<Purse> } */
-    async makeEmptyPurse() {
-      return REVIssuer.makeVaultPurse(RevVault.findOrCreate);
-    },
-    /** @type { (f: typeof RevVault.findOrCreate) => Promise<Purse> } */
-    async makeVaultPurse(findOrCreate) {
-      /** @type { REVAddress } */
-      let myAddr;
-
-      const self = harden({
-        /** @type { (allegedPayment: unknown) => Promise<Result<unknown>> } */
-        async deposit(allegedPayment) {
-          const pmtAuthKey = await RevVault.unforgeableAuthKey(allegedPayment);
-          // @ts-ignore
-          const amount = await allegedPayment.getBalance();
-          // @ts-ignore
-          const pmtAddr = await allegedPayment.getAddress();
-          return escape(async (/** @type { Ejector } */ ej) => {
-            const pmtVault = expect(ej, await RevVault.findOrCreate(pmtAddr));
-            Nat(amount);
-            // @ts-ignore
-            return expect(
-              ej,
-              await pmtVault.transfer(myAddr, amount, pmtAuthKey)
-            );
-          });
-        },
-        async getAddress() {
-          return myAddr;
-        },
-        async getBalance() {
-          return myVault.getBalance();
-        },
-      });
-      myAddr = await RevAddress.fromUnforgeable(self);
-      const found = await findOrCreate(myAddr);
-      if (!found.ok) {
-        throw new TypeError(
-          "huh? how could findOrCreate fail on unf rev addr?"
-        );
-      }
-      const myVault = found.result;
-      return harden(self);
-    },
-  });
 
   const CrowdFund = harden({
     /**
@@ -185,7 +134,7 @@ export default async function main({ registry }) {
         async claim() {
           return escape(async (/** @type { Ejector } */ ej) => {
             await check.pledgeTarget(ej, true, `funding target not reached`);
-            const benefit = await REVIssuer.makeEmptyPurse();
+            const benefit = await revIssuer.makeEmptyPurse();
             // commit point
             const holdings = await holdingsCh.get();
             const { problems } = await ListOps.mapCollect(
@@ -208,13 +157,13 @@ export default async function main({ registry }) {
         },
 
         /**
-         * @param {unknown} pmt
+         * @param {unknown} allegedPayment
          * @returns {Promise<Result<ContributorSeatT>>}
          */
-        async contribute(pmt) {
-          const pledge = await REVIssuer.makeEmptyPurse();
+        async contribute(allegedPayment) {
+          const pledge = await revIssuer.makeEmptyPurse();
           return escape(async (/** @type {Ejector} */ ej) => {
-            const amt = expect(ej, await pledge.deposit(pmt));
+            expect(ej, await pledge.deposit(allegedPayment));
             const contributorSeat = await ContributorSeat.make(pledge);
             const { balance, pledges } = await holdingsCh.get();
             const pbal = await pledge.getBalance();
@@ -267,7 +216,7 @@ export default async function main({ registry }) {
     let ix = 123;
     /** @type {(amount: NatT) => Promise<Purse>} */
     async function _faucet(amount) {
-      return REVIssuer.makeVaultPurse((addr) => RevVault._faucet(addr, amount));
+      return revIssuer.makeVaultPurse((addr) => RevVault._faucet(addr, amount));
     }
     return escape(async (/* @type { Ejector } */ ej) => {
       await tc("claim early", false, beneficiarySeat.claim());
