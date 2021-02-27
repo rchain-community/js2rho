@@ -35,31 +35,34 @@ const Notary = harden({ make()  {
     return notary;
 } });
 
-// create Widget Inc's notary
-const widgetNotary = Notary.make();
+export default
+async function test() {
+    // create Widget Inc's notary
+    const widgetNotary = Notary.make();
 
-// Order form maker
-function makeOrderForm(salesPerson) {
-    const orderForm = harden({
-        // .... methods for implementing orderForm
-        startVouch() { widgetNotary.startVouch(orderForm); }
+    // Order form maker
+    function makeOrderForm(salesPerson) {
+        const orderForm = harden({
+            // .... methods for implementing orderForm
+            startVouch() { widgetNotary.startVouch(orderForm); }
+        });
+        return orderForm;
+    }
+
+    // publicly available inspector object
+    // (accessible through a uri posted on Widget Inc's web site)
+    const WidgetInspectionService = harden({
+        getInspector() { return widgetNotary.getInspector(); }
     });
-    return orderForm;
+
+    // ##### bob software #####
+
+    //  scaffold for sample
+    function getOrderFormFromBob()  { return makeOrderForm("scaffold"); }
+
+    // ########## Alice's software to vouch for the order form she received from Bob #####
+
+    const untrustedOrderForm = getOrderFormFromBob();
+    const inspector = WidgetInspectionService.getInspector();
+    const trustedOrderForm = inspector.vouch(untrustedOrderForm);
 }
-
-// publicly available inspector object
-// (accessible through a uri posted on Widget Inc's web site)
-const WidgetInspectionService = harden({
-    getInspector() { return widgetNotary.getInspector(); }
-});
-
-// ##### bob software #####
-
-//  scaffold for sample
-function getOrderFormFromBob()  { return makeOrderForm("scaffold"); }
-
-// ########## Alice's software to vouch for the order form she received from Bob #####
-
-const untrustedOrderForm = getOrderFormFromBob();
-const inspector = WidgetInspectionService.getInspector();
-const trustedOrderForm = inspector.vouch(untrustedOrderForm);
