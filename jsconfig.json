@@ -2,6 +2,7 @@
     "compilerOptions": {
         "checkJs": true,
         "module": "es6",
+        "moduleResolution": "node",
         "target": "es2019"
     },
     "exclude": [
