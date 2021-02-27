@@ -5,6 +5,11 @@ const { freeze: harden } = Object; // TODO? @agoric/harden
  */
 
 /**
+ * @typedef { [ok: true, result: T] | [ok: false, problem: string] } TODOResult<T>
+ * @template T
+ */
+
+/**
  * @typedef { { ok: true, result: T } | { ok: false, problem: Problem } } Result<T>
  * @template T
  */
@@ -28,7 +33,11 @@ export function Err(problem) {
 }
 
 /**
- * @param { (p: any) => never } ej
+ * @typedef { (reason: unknown) => never } Ejector
+ */
+
+/**
+ * @param { Ejector } ej
  * @param { Result<T> } result
  * @returns { T }
  * @template T
@@ -44,7 +53,7 @@ export function expect(ej, result) {
 }
 
 /**
- * @param { (p: any) => never } ej
+ * @param { Ejector } ej
  * @param { Result<T> } result
  * @returns { Problem }
  * @template T
@@ -59,9 +68,6 @@ export function doubt(ej, result) {
   }
 }
 
-/**
- * @typedef { (reason: any) => never } Ejector
- */
 /**
  * @param {(ej: Ejector) => Promise<T>} thunk
  * @returns { Promise<Result<T>> }
