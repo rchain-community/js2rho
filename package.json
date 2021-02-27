@@ -6,7 +6,7 @@
   "type": "module",
   "dependencies": {
     "@agoric/harden": "0.0.8",
-    "esprima": "^4.0.0"
+    "jessica": "./lib/vendor/jessica"
   },
   "devDependencies": {
     "@types/esprima": "^4.0.1",
