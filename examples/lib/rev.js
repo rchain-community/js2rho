@@ -74,7 +74,7 @@ export const RevVault = (() => {
       async getBalance() {
         return balance;
       },
-      /** @type { (dest: REVAddress, amount: NatT, key: unknown) => Promise<Result<unknown>> } */
+      /** @type { (dest: REVAddress, amount: NatT, key: unknown) => Promise<Result<null>> } */
       async transfer(dest, amount, key) {
         return escape(async (ej) => {
           const destVault = expect(ej, await RevVault.findOrCreate(dest));
