@@ -5,13 +5,13 @@
   "main": "index.js",
   "type": "module",
   "dependencies": {
-    "esprima": "^4.0.0"
+    "esprima": "^4.0.0",
+    "typescript": "^4.2.2"
   },
   "devDependencies": {
     "@types/esprima": "^4.0.1",
     "@types/estree": "0.0.38",
-    "@types/node": "^13.11.1",
-    "typescript": "^3.8.3"
+    "@types/node": "^13.11.1"
   },
   "scripts": {
     "test": "node test/testSuite.js"
