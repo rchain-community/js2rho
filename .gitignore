@@ -1,3 +1,13 @@
-node_modules/
-dist/
+# emacs backups
 *~
+
+# node.js
+**/node_modules/*
+dist/*
+
+# scala
+**/target/*
+
+# metals
+.metals/
+.bloop/

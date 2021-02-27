@@ -4,7 +4,7 @@ import { harden } from '@agoric/harden';
 
 const Mint = harden({
     make() {
-        //const m = WeakMap();
+        const m = new WeakMap();
         const makePurse = () => mint(0);
         const mint = balance => {
             const purse = harden({

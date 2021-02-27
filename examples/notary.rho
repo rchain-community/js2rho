@@ -1,0 +1,77 @@
+// taken from "E in a Walnut" by Marc Stiegler 2000
+// http://wiki.erights.org/wiki/Walnut/Secure_Distributed_Computing/Capability_Patterns#Vouching_with_Notary.2FInspector
+
+new Notary in {
+
+// E sample
+// ##### Widget Inc. software #####
+
+// vouching system
+// returns a private notary that offers a public inspector
+// throws problem if the object being vouched is not vouchable
+contract Notary(@"make", __return, __throw) = {
+    new nonObject, vouchableObjectCh, inspector, notary in {
+
+    vouchableObjectCh!(*nonObject) |
+    contract inspector(@"vouch", obj, __return) = {
+        for (_ <- vouchableObjectCh) {
+            vouchableObjectCh!(*nonObject) |
+            new tryCh, startCh in {
+                obj!("startVouch", *startCh) |
+                // ISSUE: this translation isn't quite right; it could hang where js does not
+                for (_ <- startCh; @vouchableObject <- vouchableObjectCh) {
+                  if (vouchableObject == *nonObject) {
+                    __throw!({"Object not vouchable": *obj })
+                  } else {
+                    match vouchableObject {
+                      vouchedObject => {
+                        vouchableObjectCh!(*nonObject) |
+                        __return!(vouchedObject)
+                      }
+                    }
+                }
+            }
+        }
+    } |
+    contract notary(@"startVouch", obj, __return) = { vouchableObjectCh!(*obj) | __return!(Nil) }
+    |
+    contract notary(@"getInspector", __return) = { __return!(*inspector) }
+    |
+    __return!(*notary)
+    }
+    }
+}
+
+
+/*@@@@@
+// create Widget Inc's notary
+const widgetNotary = Notary.make();
+
+// Order form maker
+function makeOrderForm(salesPerson) {
+    const orderForm = harden({
+        // .... methods for implementing orderForm
+        startVouch() { widgetNotary.startVouch(orderForm); }
+    });
+    return orderForm;
+}
+
+// publicly available inspector object
+// (accessible through a uri posted on Widget Inc's web site)
+const WidgetInspectionService = harden({
+    getInspector() { return widgetNotary.getInspector(); }
+});
+
+// ##### bob software #####
+
+//  scaffold for sample
+function getOrderFormFromBob()  { return makeOrderForm("scaffold"); }
+
+// ########## Alice's software to vouch for the order form she received from Bob #####
+
+const untrustedOrderForm = getOrderFormFromBob();
+const inspector = WidgetInspectionService.getInspector();
+const trustedOrderForm = inspector.vouch(untrustedOrderForm);
+*/
+
+}

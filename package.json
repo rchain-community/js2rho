@@ -5,13 +5,14 @@
   "main": "index.js",
   "type": "module",
   "dependencies": {
-    "esprima": "^4.0.0",
-    "typescript": "^4.2.2"
+    "@agoric/harden": "0.0.8",
+    "esprima": "^4.0.0"
   },
   "devDependencies": {
     "@types/esprima": "^4.0.1",
     "@types/estree": "0.0.38",
-    "@types/node": "^13.11.1"
+    "@types/node": "^13.11.1",
+    "typescript": "^4.2.2"
   },
   "scripts": {
     "test": "node test/testSuite.js"
