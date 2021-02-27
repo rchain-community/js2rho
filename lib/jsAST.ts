@@ -1,22 +1,24 @@
 
 type Expression = (
-    ["use", string]
-  | ["call", Expression, Expression[]]
-  | ["arrow", Pattern[], Block]
-  | [BinOp, Expression, Expression]
+    [tag: "data", value: null | boolean | number | string]
+  | [tag: "use", name: string]
+  | [tag: "call", callee: Expression, args: Expression[]]
+  | [tag: "arrow", args: Pattern[], body: Block]
+  | [tag: BinOp, lhs: Expression, rhs: Expression]
 );
 type BinOp = "-";
 
-interface Statement {}; // TODO
+type Statement = Expression; // TODO
 
 type Block = (Declaration | Statement)[];
 type Declaration = (
-    ["let", Binding[]]
+    [tag: "let", bindings: Binding[]]
+  | ModuleDeclaration
 )
-type Pattern = ["def", string];
-type Binding = ["bind", [Pattern, Expression][]]
+type Pattern = [tag: "def", name: string];
+type Binding = [tag: "bind", pat: Pattern, expr: Expression]
 type ModuleDeclaration = (
-    ["const", Binding[]]
+    [tag: "const", bindings: Binding[]]
+  | [tag: "import", clause: ["importBind", ['as', string, string][]], specifier: string]
 )
-
-type Module = ["module", ModuleDeclaration[]];
+type Module = [tag: "module", decls: ModuleDeclaration[]];
