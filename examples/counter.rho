@@ -1,0 +1,31 @@
+new Counter {
+  contract Counter(@"make", return) = {
+    new self, countCh in {
+      return!(self) |
+
+      countCh!(0) |
+
+      contract self(@"incr", return) = {
+        for (@count <- countCh) {
+          match count + 1 {
+            countPost => {
+              countCh!(countPost) |
+              return!(countPost)
+            }
+          }
+        }
+      } |
+
+      contract self(@"decr", return) = {
+        for (@count <- countCh) {
+          match count - 1 {
+            countPost => {
+              countCh!(countPost) |
+              return!(countPost)
+            }
+          }
+        }
+      }
+    }
+  }
+}
