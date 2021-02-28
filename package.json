@@ -4,7 +4,8 @@
   "description": "JavaScript to Rholang translator",
   "main": "lib/js2rho.js",
   "dependencies": {
-    "@agoric/harden": "0.0.8",
+    "@agoric/eventual-send": "^0.13.2-dev.0",
+    "@agoric/install-ses": "^0.5.2-dev.0",
     "esm": "^3.2.25",
     "jessica": "./lib/vendor/jessica"
   },

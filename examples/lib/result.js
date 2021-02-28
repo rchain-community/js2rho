@@ -33,7 +33,14 @@ export function Err(problem) {
 }
 
 /**
- * @typedef { (reason: unknown) => never } Ejector
+ *
+ * @param {boolean} condition
+ * @returns {asserts condition}
+ */
+export function believeMe(condition) {}
+
+/**
+ * @typedef { (reason: Problem) => never } Ejector
  */
 
 /**

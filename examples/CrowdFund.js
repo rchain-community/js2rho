@@ -10,7 +10,7 @@ import { Ok, escape, expect, doubt } from "./lib/result.js";
 import * as _registry from "./lib/registry.js";
 // import REVAddress from "rho:rchain:REVAddress";
 import { Nat } from "./lib/rev.js";
-import { REVIssuer } from "./RevIssuer";
+import REVIssuer from "./RevIssuer";
 
 const { freeze: harden } = Object; // TODO? @agoric/harden
 

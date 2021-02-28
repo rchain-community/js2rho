@@ -1,8 +1,9 @@
 // @ts-check
 
-import harden from "@agoric/harden";
+import * as _SES from "@agoric/install-ses";
+import { E } from "@agoric/eventual-send";
 import { RevAddress, Nat } from "./lib/rev.js";
-import { escape, expect } from "./lib/result.js";
+import { escape, expect, believeMe } from "./lib/result.js";
 
 /**
  * // TODO: @agoric/nat to handle overflow
@@ -26,59 +27,66 @@ import { escape, expect } from "./lib/result.js";
  * @typedef { import('./lib/rev').Vault} Vault
  */
 
-export const REVIssuer = harden({
+export default harden({
   /**
    * @param {typeof import('./lib/rev').RevVault } RevVault
    */
-  async make(RevVault) {
+  make(RevVault) {
     const self = harden({
       /** @type { () => Promise<Purse> } */
-      async makeEmptyPurse() {
-        return self.makeVaultPurse(RevVault.findOrCreate);
+      makeEmptyPurse() {
+        const it = E(self).makeVaultPurse(RevVault.findOrCreate);
+        return it;
       },
-      /** @param { typeof RevVault.findOrCreate } findOrCreate } */
-      async makeVaultPurse(findOrCreate) {
+      /**
+       * @param { typeof RevVault.findOrCreate } findOrCreate
+       * @returns { Promise<Purse> }
+       */
+      makeVaultPurse(findOrCreate) {
         /** @type { REVAddress } */
         let myAddr;
+        /** @type { Vault } */
+        let myVault;
 
         const self = harden({
-          /** @type { (allegedPayment: unknown) => Promise<Result<unknown>> } */
-          async deposit(allegedPayment) {
-            const pmtAuthKey = await RevVault.unforgeableAuthKey(
-              allegedPayment
+          /** @typedef { Record<string, () => Promise<unknown>> } Alleged */
+          /** @type { (allegedPayment: Alleged) => Promise<Result<void>> } */
+          deposit(allegedPayment) {
+            const ok = Promise.all([
+              E(RevVault).unforgeableAuthKey(allegedPayment),
+              E(allegedPayment).getBalance(),
+              E(allegedPayment).getAddress(),
+            ]).then(([pmtAuthKey, allegedAmount, pmtAddr]) =>
+              escape((ej) =>
+                findOrCreate(pmtAddr).then((fcR) => {
+                  const pmtVault = expect(ej, fcR);
+                  const amount = Nat(allegedAmount);
+                  return E(pmtVault)
+                    .transfer(myAddr, amount, pmtAuthKey)
+                    .then((txr) => expect(ej, txr));
+                })
+              )
             );
-            // @ts-ignore
-            const amount = await allegedPayment.getBalance();
-            // @ts-ignore
-            const pmtAddr = await allegedPayment.getAddress();
-            return escape(async (ej) => {
-              const pmtVault = expect(ej, await findOrCreate(pmtAddr));
-              Nat(amount);
-              // @ts-ignore
-              return expect(
-                ej,
-                await pmtVault.transfer(myAddr, amount, pmtAuthKey)
-              );
-            });
+            return ok;
           },
-          async getAddress() {
-            return myAddr;
+          getAddress() {
+            return Promise.resolve(myAddr);
           },
-          async getBalance() {
+          getBalance() {
             return myVault.getBalance();
           },
         });
-        myAddr = await RevAddress.fromUnforgeable(self);
-        const found = await findOrCreate(myAddr);
-        if (!found.ok) {
-          throw new TypeError(
-            "huh? how could findOrCreate fail on unf rev addr?"
-          );
-        }
-        const myVault = found.result;
-        return harden(self);
+        return RevAddress.fromUnforgeable(self).then((a) => {
+          myAddr = a;
+          return findOrCreate(myAddr).then((found) => {
+            // findOrCreate cannot fail on input from fromUnforgeable
+            believeMe(found.ok);
+            myVault = found.result;
+            return harden(self);
+          });
+        });
       },
     });
-    return self;
+    return Promise.resolve(self);
   },
 });

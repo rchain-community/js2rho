@@ -1,5 +1,5 @@
 // @ts-check
-import { Ok, escape, expect } from "./result.js";
+import { Ok, escape, expect, Err } from "./result.js";
 
 /**
  * @typedef { import('./result').Result<T>} Result<T>
@@ -50,7 +50,7 @@ export function Nat(amt) {
 /**
  * @typedef {{
  *   getBalance: () => Promise<NatT>,
- *   transfer: (dest: REVAddress, amount: NatT, key: unknown) => Promise<Result<unknown>>
+ *   transfer: (dest: REVAddress, amount: NatT, key: unknown) => Promise<Result<null>>
  * }} Vault
  *
  * @typedef {{
@@ -60,7 +60,7 @@ export function Nat(amt) {
  * @typedef { string } REVAddress
  */
 export const RevVault = (() => {
-  /** @type {Map<String, Vault>} */
+  /** @type {Map<REVAddress, Vault>} */
   const vaults = new Map();
 
   /** @type { (amount: NatT, addr: string) => Vault } */
@@ -97,15 +97,20 @@ export const RevVault = (() => {
   }
 
   return harden({
-    /** @type {(addr: REVAddress) => Promise<Result<Vault & ToString>> } */
+    /**
+     * @param {unknown} addr
+     * @returns {Promise<Result<Vault & ToString>>}
+     */
     async findOrCreate(addr) {
-      // TODO: validate REVAddress?
+      if (typeof addr !== "string") {
+        return Err({ message: `not REVAddress: ${addr}` });
+      }
 
       if (vaults.has(addr)) {
         return Ok(vaults.get(addr));
       }
 
-      const newVault = mint(0, addr);
+      const newVault = mint(0, `${addr}`);
 
       return Ok(newVault);
     },
