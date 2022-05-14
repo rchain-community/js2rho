@@ -1,0 +1,13 @@
+new
+reply,
+lookup(`rho:registry:lookup`),
+vatCh,
+spawnCh in {
+  lookup!(`rho:id:66e7pqyjgxhng9o9wt4js7gtzhhmfcaxpkya1r53yizeunty7pjyje`, *spawnCh)
+  |
+  for (spawn <- spawnCh) {
+    spawn!(*vatCh) | for (@{"id": id, "entry": _} <- vatCh) {
+      reply!(id)
+    }
+  }
+}

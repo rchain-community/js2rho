@@ -1,0 +1,42 @@
+new
+// log,
+log(`rho:io:stdout`),
+deployerId(`rho:rchain:deployerId`),
+insertArb(`rho:registry:insertArbitrary`),
+spawn in {
+  contract spawn(ret) = {
+    new vatName in {
+      match {*vatName}.toByteArray().bytesToHex() {
+        vatHex => {
+          match {[*deployerId, vatHex]} {
+            {*entry} => {
+              contract entry(@msg, ack) = {
+                log!(msg) |
+                ack!(msg.toByteArray().length()) // TODO: sequence number
+                | log!(msg.toByteArray().length())
+              }
+              |
+              ret!({"entry": bundle+{*entry}, "id": vatHex})
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  |
+  new testCh in {
+    spawn!(*testCh) | for (@{"entry": *testVatEntry, "id": hex} <- testCh) {
+      log!(*testVatEntry)|
+      log!({"hex id": hex}) |
+      testVatEntry!("Watson, come quickly!", *testVatEntry)
+    }
+  }
+  |
+  new uriCh in {
+    insertArb!(*spawn, *uriCh) |
+    for(@uri <- uriCh) {
+      log!({"spawn contract": uri})
+    }
+  }
+}
